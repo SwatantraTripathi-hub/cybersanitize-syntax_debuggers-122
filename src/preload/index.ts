@@ -99,7 +99,8 @@ const api = {
 
   // Fleet Orchestration
   createLobby: (port?: number) => ipcRenderer.invoke('fleet:create-lobby', port),
-  joinLobby: (params: { hostIp: string; roomCode: string; nodeId: string; port?: number }) =>
+  setFleetWorkspaceMeta: (meta: any) => ipcRenderer.invoke('fleet:set-workspace-meta', meta),
+  joinLobby: (params: { hostIp: string; roomCode: string; nodeId: string; port?: number; nodeDetails?: any }) =>
     ipcRenderer.invoke('fleet:join-lobby', params),
   broadcastPreScan: (nodeIds?: string[]) => ipcRenderer.invoke('fleet:broadcast-prescan', nodeIds),
   broadcastWipe: (standard: string, nodeIds?: string[]) =>
@@ -133,6 +134,11 @@ const api = {
     const listener = (_event: any, nodeId: string) => callback(nodeId)
     ipcRenderer.on('fleet:node-disconnected', listener)
     return () => ipcRenderer.removeListener('fleet:node-disconnected', listener)
+  },
+  onFleetClientCommand: (callback: (type: string) => void) => {
+    const listener = (_event: any, type: string) => callback(type)
+    ipcRenderer.on('fleet:client-command', listener)
+    return () => ipcRenderer.removeListener('fleet:client-command', listener)
   }
 }
 

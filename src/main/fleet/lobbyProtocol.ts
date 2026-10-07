@@ -82,6 +82,22 @@ export interface RoomAcceptedPayload {
   roomKey: string
   hostVersion: string
   connectedPeers: number
+  workspaceMeta?: {
+    caseId: string
+    title: string
+    evidenceTag: string
+    authorizingOfficer: string
+    date: string
+    notes: string
+    classification: string
+    driveSerial?: string
+    selectedOptions?: {
+      wipeStandard: string
+      recoveryTypes: string[]
+      writeBlockerEnforced: boolean
+      preScanEnabled: boolean
+    }
+  }
 }
 
 export interface BroadcastPayload {

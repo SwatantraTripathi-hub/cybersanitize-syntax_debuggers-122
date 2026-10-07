@@ -48,6 +48,18 @@ class FleetHost extends EventEmitter {
   private sockets: Map<string, WebSocket> = new Map()
   private activeRoomKey: string = ''
   private port: number = 4096
+  private activeWorkspaceMeta: any = null
+
+  /**
+   * Set active workspace configuration metadata for joining nodes.
+   */
+  setWorkspaceMeta(meta: any): void {
+    this.activeWorkspaceMeta = meta
+  }
+
+  getWorkspaceMeta(): any {
+    return this.activeWorkspaceMeta
+  }
 
   /**
    * Start the WebSocket server and return the room key.
@@ -128,7 +140,7 @@ class FleetHost extends EventEmitter {
             this.nodes.set(payload.nodeId, node)
             this.sockets.set(payload.nodeId, ws)
 
-            // Acknowledge
+            // Acknowledge with full workspace metadata and central configuration
             this._send(ws, {
               type: FleetMessageType.ROOM_ACCEPTED,
               nodeId: 'host',
@@ -137,7 +149,22 @@ class FleetHost extends EventEmitter {
               payload: {
                 roomKey: this.activeRoomKey,
                 hostVersion: '1.0.0',
-                connectedPeers: this.nodes.size
+                connectedPeers: this.nodes.size,
+                workspaceMeta: this.activeWorkspaceMeta || {
+                  caseId: `FLEET-${this.activeRoomKey}`,
+                  title: 'Central Fleet Mesh Workspace',
+                  evidenceTag: `AST-${this.activeRoomKey}`,
+                  authorizingOfficer: 'Lead Administrator / Central Fleet Hub',
+                  date: new Date().toISOString().split('T')[0],
+                  notes: 'Air-gapped multi-device fleet workspace orchestrating parallel client workstations.',
+                  classification: 'ENTERPRISE FLEET / NIST 800-88 REV 1',
+                  selectedOptions: {
+                    wipeStandard: 'nist-clear',
+                    recoveryTypes: ['DOCX', 'PDF', 'SQLITE'],
+                    writeBlockerEnforced: true,
+                    preScanEnabled: true
+                  }
+                }
               }
             })
 

@@ -54,15 +54,32 @@ export function registerFleetIpc(mainWindow: BrowserWindow): void {
     }
   })
 
+  // Set Workspace Meta for Lobby Host
+  ipcMain.handle('fleet:set-workspace-meta', async (_, meta: any) => {
+    if (fleetHostInstance) {
+      fleetHostInstance.setWorkspaceMeta(meta)
+      return { success: true }
+    }
+    return { success: false, error: 'Host not running' }
+  })
+
   // 2. Join Lobby as a Client Node
-  ipcMain.handle('fleet:join-lobby', async (_, { hostIp, roomCode, nodeId, port = 4096 }) => {
+  ipcMain.handle('fleet:join-lobby', async (_, { hostIp, roomCode, nodeId, port = 4096, nodeDetails }) => {
     try {
       if (fleetClientInstance) {
         fleetClientInstance.disconnect()
       }
       fleetClientInstance = new FleetClient()
-      await fleetClientInstance.joinLobby(hostIp, port, roomCode, nodeId)
-      return { success: true }
+
+      // Forward client received events to renderer
+      fleetClientInstance.on('command_received', (type) => {
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('fleet:client-command', type)
+        }
+      })
+
+      const result = await fleetClientInstance.joinLobby(hostIp, port, roomCode, nodeId, nodeDetails)
+      return result
     } catch (err: any) {
       console.error('[FleetIPC] Error joining lobby:', err)
       return { success: false, error: err.message }

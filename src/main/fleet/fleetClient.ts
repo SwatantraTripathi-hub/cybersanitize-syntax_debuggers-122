@@ -51,12 +51,24 @@ class FleetClient extends EventEmitter {
    * @param roomKey  - The CS-FLEET-XXXX room key shown on the dashboard
    * @param nodeId   - Unique identifier for this client node
    */
+  private workspaceMeta: any = null
+
+  /**
+   * Connect to a fleet host and send JOIN_ROOM.
+   *
+   * @param hostIp      - IP of the FleetHost machine (e.g. '127.0.0.1')
+   * @param port        - WebSocket port (default 4096)
+   * @param roomKey     - The CS-FLEET-XXXX room key shown on the dashboard
+   * @param nodeId      - Unique identifier for this client node
+   * @param nodeDetails - Optional custom workstation metadata
+   */
   async joinLobby(
     hostIp: string,
     port: number = 4096,
     roomKey: string,
-    nodeId: string
-  ): Promise<void> {
+    nodeId: string,
+    nodeDetails?: { hostname?: string; model?: string; storage?: string }
+  ): Promise<{ success: boolean; workspaceMeta?: any; error?: string }> {
     this.nodeId = nodeId
     this.roomKey = roomKey
 
@@ -67,15 +79,17 @@ class FleetClient extends EventEmitter {
       const ws = new WebSocket(url)
       this.ws = ws
 
+      let resolved = false
+
       const timeout = setTimeout(() => {
-        if (ws.readyState !== WebSocket.OPEN) {
+        if (!resolved) {
+          resolved = true
           ws.terminate()
           reject(new Error(`[FleetClient] Connection timeout to ${url}`))
         }
       }, 10_000)
 
       ws.on('open', () => {
-        clearTimeout(timeout)
         console.log(`[FleetClient] Connected to ${url}`)
         this.emit('connected')
 
@@ -97,11 +111,11 @@ class FleetClient extends EventEmitter {
 
         const payload: JoinRoomPayload = {
           nodeId,
-          hostname: os.hostname(),
+          hostname: nodeDetails?.hostname || os.hostname(),
           ip,
           mac,
-          model: `${os.type()} ${os.arch()}`,
-          storage: 'Local Storage',
+          model: nodeDetails?.model || `${os.type()} ${os.arch()}`,
+          storage: nodeDetails?.storage || 'Local NVMe Storage',
           platform: process.platform
         }
 
@@ -112,13 +126,29 @@ class FleetClient extends EventEmitter {
           timestamp: new Date().toISOString(),
           payload
         })
-
-        resolve()
       })
 
       ws.on('message', (raw: Buffer | string) => {
         try {
           const packet: FleetPacket = JSON.parse(raw.toString())
+
+          if (packet.type === FleetMessageType.ROOM_ACCEPTED) {
+            const accepted = packet.payload as any
+            this.workspaceMeta = accepted.workspaceMeta || null
+            if (!resolved) {
+              resolved = true
+              clearTimeout(timeout)
+              resolve({ success: true, workspaceMeta: this.workspaceMeta })
+            }
+          } else if (packet.type === FleetMessageType.ROOM_REJECTED) {
+            const rejected = packet.payload as any
+            if (!resolved) {
+              resolved = true
+              clearTimeout(timeout)
+              reject(new Error(rejected.reason || 'Room rejected by host'))
+            }
+          }
+
           this._handleServerMessage(packet)
         } catch (err) {
           console.error('[FleetClient] Parse error:', err)
@@ -132,12 +162,19 @@ class FleetClient extends EventEmitter {
       })
 
       ws.on('error', (err: Error) => {
-        clearTimeout(timeout)
+        if (!resolved) {
+          resolved = true
+          clearTimeout(timeout)
+          reject(err)
+        }
         console.error('[FleetClient] WebSocket error:', err.message)
         this.emit('error', err)
-        reject(err)
       })
     })
+  }
+
+  getWorkspaceMeta(): any {
+    return this.workspaceMeta
   }
 
   /**

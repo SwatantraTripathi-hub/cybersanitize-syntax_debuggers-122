@@ -34,6 +34,7 @@ export const Layout: React.FC = () => {
     protectedDrives,
     orchestrationMode,
     selectedFleetNode,
+    isJoinedClientNode,
     backToFleetOverview,
     backToLanding
   } = useCase()
@@ -100,11 +101,20 @@ export const Layout: React.FC = () => {
             {/* Special return button if in Fleet Mode */}
             {orchestrationMode === 'MULTI' && (
               <button
-                onClick={backToFleetOverview}
+                onClick={isJoinedClientNode ? backToLanding : backToFleetOverview}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-xs font-semibold tracking-wide text-emerald-400 bg-white/5 hover:bg-white/10 border-l-4 border-emerald-400 pl-2 transition mb-2"
               >
-                <Network className="w-4 h-4 text-emerald-400" />
-                <span>Return to Fleet Mesh</span>
+                {isJoinedClientNode ? (
+                  <>
+                    <ArrowLeft className="w-4 h-4 text-emerald-400" />
+                    <span>Disconnect / Return</span>
+                  </>
+                ) : (
+                  <>
+                    <Network className="w-4 h-4 text-emerald-400" />
+                    <span>Return to Fleet Mesh</span>
+                  </>
+                )}
               </button>
             )}
 
@@ -138,7 +148,7 @@ export const Layout: React.FC = () => {
           <div className="flex items-center justify-between text-[10px] text-atlas-lightmuted pt-0.5">
             <span>Orchestration:</span>
             <span className="font-bold text-white">
-              {orchestrationMode === 'MULTI' ? 'Fleet Node Scope' : 'Standalone Station'}
+              {isJoinedClientNode ? 'Joined Secondary Station' : orchestrationMode === 'MULTI' ? 'Fleet Node Scope' : 'Standalone Station'}
             </span>
           </div>
         </div>
@@ -213,7 +223,11 @@ export const Layout: React.FC = () => {
             {selectedFleetNode && (
               <div className="hidden md:flex items-center gap-1.5 text-xs bg-emerald-50 text-emerald-800 px-2.5 py-1 rounded-md border border-emerald-200 font-mono">
                 <Laptop className="w-3 h-3 text-emerald-600" />
-                <span>Node: <strong>{selectedFleetNode.hostname}</strong></span>
+                <span>
+                  {isJoinedClientNode ? 'Joined Client Station: ' : 'Node: '}
+                  <strong>{selectedFleetNode.hostname}</strong>
+                  {isJoinedClientNode && activeCase.fleetKey && ` • ROOM: ${activeCase.fleetKey}`}
+                </span>
               </div>
             )}
           </div>
