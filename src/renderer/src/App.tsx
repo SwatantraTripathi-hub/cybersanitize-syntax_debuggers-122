@@ -5,6 +5,7 @@ import { CaseProvider, useCase } from './context/CaseContext'
 // Global Dialogs & Modals
 import CaseModal from './components/CaseModal'
 import FleetCreateModal from './components/FleetCreateModal'
+import FleetJoinModal from './components/FleetJoinModal'
 import WriteBlockerModal from './components/WriteBlockerModal'
 
 // Primary Screen Views
@@ -46,6 +47,7 @@ const AppContent: React.FC = () => {
       {/* Global Interactive Modals */}
       <CaseModal />
       <FleetCreateModal />
+      <FleetJoinModal />
       <WriteBlockerModal />
     </>
   )

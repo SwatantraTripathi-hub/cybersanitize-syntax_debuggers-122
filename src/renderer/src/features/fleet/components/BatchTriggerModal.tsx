@@ -1,10 +1,11 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Flame, X, AlertTriangle, ShieldCheck, Check } from 'lucide-react'
 
 interface BatchTriggerModalProps {
   isOpen: boolean
   onClose: () => void
   selectedCount: number
+  defaultStandard: string
   onConfirmWipe: (standard: string) => void
 }
 
@@ -12,10 +13,18 @@ export const BatchTriggerModal: React.FC<BatchTriggerModalProps> = ({
   isOpen,
   onClose,
   selectedCount,
+  defaultStandard,
   onConfirmWipe
 }) => {
-  const [selectedStandard, setSelectedStandard] = useState('nist-clear')
+  const [selectedStandard, setSelectedStandard] = useState(defaultStandard)
   const [confirmedCheck, setConfirmedCheck] = useState(false)
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedStandard(defaultStandard)
+      setConfirmedCheck(false)
+    }
+  }, [defaultStandard, isOpen])
 
   if (!isOpen) return null
 

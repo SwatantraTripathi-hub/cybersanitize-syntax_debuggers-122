@@ -19,12 +19,14 @@ interface NodeCardProps {
   node: FleetNode
   onToggleSelect: (id: string) => void
   onOpenEngine: (node: FleetNode) => void
+  onInspectPreScan?: () => void
 }
 
 export const NodeCard: React.FC<NodeCardProps> = ({
   node,
   onToggleSelect,
-  onOpenEngine
+  onOpenEngine,
+  onInspectPreScan
 }) => {
   const getStatusBadge = () => {
     switch (node.status) {

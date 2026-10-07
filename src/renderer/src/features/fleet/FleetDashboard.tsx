@@ -23,6 +23,7 @@ export const FleetDashboard: React.FC = () => {
   const {
     fleetKey,
     fleetWorkspaceName,
+    joinedWorkspaceMeta,
     connectedNodes,
     toggleNodeSelection,
     selectAllNodes,
@@ -36,13 +37,19 @@ export const FleetDashboard: React.FC = () => {
   const [isPreScanModalOpen, setIsPreScanModalOpen] = useState(false)
   const [isBatchWipeModalOpen, setIsBatchWipeModalOpen] = useState(false)
   const [telemetryLog, setTelemetryLog] = useState<string[]>([
-    `[${new Date().toLocaleTimeString()}] Local LAN WebSocket mesh listening on ws://127.0.0.1:4096`,
-    `[${new Date().toLocaleTimeString()}] Broadcast announced: roomKey=${fleetKey}`,
-    `[${new Date().toLocaleTimeString()}] 5 workstation nodes synchronized with zero latency.`
+    `[${new Date().toLocaleTimeString()}] Local LAN WebSocket fleet host initialized on port 4096.`,
+    `[${new Date().toLocaleTimeString()}] Waiting for workstations to join room ${fleetKey}.`
   ])
 
   const selectedCount = connectedNodes.filter(n => n.selected).length
-  const allSelected = selectedCount === connectedNodes.length
+  const allSelected = connectedNodes.length > 0 && selectedCount === connectedNodes.length
+  const onlineCount = connectedNodes.filter(node => node.status !== 'OFFLINE').length
+  const assignedOptions = {
+    wipeStandard: 'nist-clear',
+    recoveryTypes: ['DOCX', 'PDF', 'SQLITE'],
+    preScanEnabled: true,
+    ...(joinedWorkspaceMeta?.selectedOptions ?? {})
+  }
 
   const handleExportConsolidatedDossier = () => {
     const payload = {
@@ -59,6 +66,7 @@ export const FleetDashboard: React.FC = () => {
   }
 
   const handleTriggerPreScan = () => {
+    if (!assignedOptions.preScanEnabled) return
     dispatchBatchPreScan()
     setTelemetryLog(prev => [
       `[${new Date().toLocaleTimeString()}] Pre-scan triggered on ${selectedCount} workstations.`,
@@ -78,7 +86,7 @@ export const FleetDashboard: React.FC = () => {
   }
 
   const handleTriggerBatchRecovery = () => {
-    dispatchBatchRecovery()
+    dispatchBatchRecovery(assignedOptions.recoveryTypes)
     setTelemetryLog(prev => [
       `[${new Date().toLocaleTimeString()}] Batch recovery dispatched to ${selectedCount} workstations.`,
       ...prev
@@ -134,26 +142,26 @@ export const FleetDashboard: React.FC = () => {
           {[
             {
               label: 'Workstations Online',
-              value: `${connectedNodes.length} / ${connectedNodes.length}`,
-              sub: 'Zero latency local mesh',
+              value: `${onlineCount} / ${connectedNodes.length}`,
+              sub: connectedNodes.length ? 'Live WebSocket connections' : 'Waiting for clients to join',
               icon: Laptop
             },
             {
               label: 'Aggregated Storage',
-              value: '2.30 TB Total',
-              sub: 'Solid-State NVMe / SATA',
+              value: `${connectedNodes.length} workstation${connectedNodes.length === 1 ? '' : 's'}`,
+              sub: 'Connected to this fleet room',
               icon: Layers
             },
             {
               label: 'Pre-Scan State',
-              value: 'Ready',
-              sub: 'Inventory audit available',
+              value: connectedNodes.some(node => node.preScanFindings) ? 'Complete' : 'Not started',
+              sub: 'Live client pre-scan results',
               icon: Search
             },
             {
               label: 'Audit Status',
-              value: 'Verified',
-              sub: 'Ed25519 sealed',
+              value: connectedNodes.length ? 'Monitoring' : 'Awaiting nodes',
+              sub: 'Fleet activity status',
               icon: ShieldCheck
             }
           ].map((item, idx) => {
@@ -197,7 +205,7 @@ export const FleetDashboard: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               onClick={handleTriggerPreScan}
-              disabled={selectedCount === 0}
+              disabled={selectedCount === 0 || !assignedOptions.preScanEnabled}
               className="px-3.5 py-2 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition flex items-center gap-1.5 disabled:opacity-50"
             >
               <Search className="w-3.5 h-3.5" />
@@ -277,6 +285,7 @@ export const FleetDashboard: React.FC = () => {
         isOpen={isBatchWipeModalOpen}
         onClose={() => setIsBatchWipeModalOpen(false)}
         selectedCount={selectedCount}
+        defaultStandard={assignedOptions.wipeStandard}
         onConfirmWipe={handleTriggerBatchWipe}
       />
     </div>

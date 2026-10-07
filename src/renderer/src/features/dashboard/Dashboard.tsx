@@ -12,7 +12,11 @@ import {
   Download,
   Filter,
   Laptop,
-  ArrowLeft
+  ArrowLeft,
+  Radio,
+  CheckCircle2,
+  Flame,
+  Layers
 } from 'lucide-react'
 import { useCase } from '../../context/CaseContext'
 
@@ -23,6 +27,9 @@ export const Dashboard: React.FC = () => {
     setIsCaseModalOpen, 
     exportCase, 
     selectedFleetNode, 
+    isJoinedClientNode,
+    isWebSocketConnected,
+    joinedWorkspaceMeta,
     backToFleetOverview 
   } = useCase()
 
@@ -34,6 +41,20 @@ export const Dashboard: React.FC = () => {
   })
   const [recentLogs, setRecentLogs] = useState<any[]>([])
   const [viewScope, setViewScope] = useState<'case' | 'all'>('case')
+  const assignedOptions = {
+    wipeStandard: 'nist-clear',
+    recoveryTypes: ['DOCX', 'PDF', 'SQLITE'],
+    writeBlockerEnforced: true,
+    preScanEnabled: true,
+    ...(joinedWorkspaceMeta?.selectedOptions ?? {})
+  }
+  const standardNames: Record<string, string> = {
+    'nist-clear': 'NIST SP 800-88 Clear',
+    'nist-purge': 'NIST SP 800-88 Purge',
+    'nvme-crypto': 'NVMe Cryptographic Erase',
+    'dod-3': 'DoD 5220.22-M (3-pass)',
+    'dod-7': 'DoD 5220.22-M (7-pass)'
+  }
 
   useEffect(() => {
     setRecentLogs([
@@ -66,7 +87,7 @@ export const Dashboard: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto space-y-4">
       {/* Fleet Node Context Banner (if viewing specific node in fleet mode) */}
-      {selectedFleetNode && (
+      {selectedFleetNode && !isJoinedClientNode && (
         <div className="bg-emerald-50 border border-emerald-300 rounded-xl px-4 py-2.5 flex items-center justify-between shadow-xs">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-xs">
@@ -89,6 +110,115 @@ export const Dashboard: React.FC = () => {
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Return to Fleet Mesh</span>
           </button>
+        </div>
+      )}
+
+      {/* Central Host Configuration & Directives for this Workstation */}
+      {(selectedFleetNode || isJoinedClientNode) && (
+        <div className="bg-white border-2 border-emerald-500/30 rounded-xl p-5 shadow-atlas space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-atlas-border gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                <Radio className="w-4 h-4 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-atlas-navy">
+                    {isJoinedClientNode ? 'Central Coordinator Assigned Directives' : 'Fleet Workstation Profile & Assigned Directives'}
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    ROOM: {activeCase.fleetKey || 'CS-FLEET-8492'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-atlas-muted">
+                  Parameters designated by {activeCase.authorizingOfficer} for this secondary workstation
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs">
+              <span className={`w-2 h-2 rounded-full ${isWebSocketConnected ? 'bg-emerald-600 animate-pulse' : 'bg-red-500'}`}></span>
+              <span className={`font-mono text-[11px] font-semibold ${isWebSocketConnected ? 'text-emerald-700' : 'text-red-700'}`}>
+                {isWebSocketConnected ? 'Coordinator link active' : 'Coordinator disconnected'} · {activeCase.fleetKey}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+            <div className="p-3 rounded-lg bg-atlas-bg border border-atlas-border space-y-1">
+              <span className="text-[10px] font-mono font-bold uppercase text-atlas-muted block">
+                Sanitization Standard
+              </span>
+              <div className="font-bold text-atlas-navy flex items-center gap-1.5">
+                <Flame className="w-3.5 h-3.5 text-amber-600" />
+                <span>{standardNames[assignedOptions.wipeStandard] || assignedOptions.wipeStandard}</span>
+              </div>
+              <span className="text-[10px] text-atlas-muted block">Assigned by the central workspace coordinator</span>
+            </div>
+
+            <div className="p-3 rounded-lg bg-atlas-bg border border-atlas-border space-y-1">
+              <span className="text-[10px] font-mono font-bold uppercase text-atlas-muted block">
+                Target Storage Media
+              </span>
+              <div className="font-bold text-atlas-navy flex items-center gap-1.5">
+                <HardDrive className="w-3.5 h-3.5 text-atlas-forest" />
+                <span className="truncate">{selectedFleetNode?.storage || '512 GB NVMe Direct'}</span>
+              </div>
+              <span className="text-[10px] text-atlas-muted block">Win32 Native DMA Interlock</span>
+            </div>
+
+            <div className="p-3 rounded-lg bg-atlas-bg border border-atlas-border space-y-1">
+              <span className="text-[10px] font-mono font-bold uppercase text-atlas-muted block">
+                Recovery Signatures
+              </span>
+              <div className="font-bold text-atlas-navy flex items-center gap-1.5">
+                <Search className="w-3.5 h-3.5 text-indigo-600" />
+                <span>{assignedOptions.recoveryTypes?.length ? assignedOptions.recoveryTypes.join(', ') : 'No recovery types assigned'}</span>
+              </div>
+              <span className="text-[10px] text-atlas-muted block">Assigned recovery signature types</span>
+            </div>
+
+            <div className="p-3 rounded-lg bg-atlas-bg border border-atlas-border space-y-1">
+              <span className="text-[10px] font-mono font-bold uppercase text-atlas-muted block">
+                Forensic Write Blocker
+              </span>
+              <div className="font-bold text-emerald-800 flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{assignedOptions.writeBlockerEnforced ? 'ISO 27037 Enforced' : 'Not required by coordinator'}</span>
+              </div>
+              <span className="text-[10px] text-atlas-muted block">{assignedOptions.writeBlockerEnforced ? 'Kernel Read-Only Volume Lock' : 'Write-blocker policy is disabled'}</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 rounded-lg bg-atlas-bg border border-atlas-border px-3 py-2 text-[11px]">
+            <CheckCircle2 className={`w-3.5 h-3.5 ${assignedOptions.preScanEnabled ? 'text-emerald-600' : 'text-atlas-muted'}`} />
+            <span className="font-semibold text-atlas-navy">Pre-sanitization scan:</span>
+            <span className="text-atlas-muted">{assignedOptions.preScanEnabled ? 'Enabled by central coordinator' : 'Not enabled for this workspace'}</span>
+          </div>
+
+          <div className="pt-2 flex flex-wrap items-center justify-between gap-3">
+            <span className="text-[11px] text-atlas-muted flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Secondary client synchronized with central fleet workspace ledger.</span>
+            </span>
+
+            <div className="flex items-center gap-2">
+              <Link
+                to="/drive-eraser"
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-300 transition flex items-center gap-1"
+              >
+                <Flame className="w-3 h-3 text-amber-600" />
+                <span>Open Sanitizer</span>
+              </Link>
+              <Link
+                to="/recovery"
+                className="atlas-btn-primary px-3 py-1.5 text-xs font-bold flex items-center gap-1"
+              >
+                <Search className="w-3 h-3" />
+                <span>Open Recovery</span>
+              </Link>
+            </div>
+          </div>
         </div>
       )}
 

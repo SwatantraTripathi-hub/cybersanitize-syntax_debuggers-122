@@ -52,11 +52,16 @@ function createWindow(): void {
   })
 }
 
+import { registerFleetIpc } from './ipc/fleet.ipc'
+
 app.whenReady().then(() => {
   // Start local sovereign verification authority
   VerificationServer.getInstance().start(3847).catch(console.error)
 
   createWindow()
+  if (mainWindow) {
+    registerFleetIpc(mainWindow)
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
