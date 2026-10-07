@@ -1,0 +1,9 @@
+appId: com.cybersanitize.app
+productName: CyberSanitize
+directories:
+  output: release
+files:
+  - dist-electron/**
+  - package.json
+win:
+  target: nsis
