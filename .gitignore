@@ -6,3 +6,4 @@ release/
 *.db-shm
 *.db-wal
 *status
+*action/
