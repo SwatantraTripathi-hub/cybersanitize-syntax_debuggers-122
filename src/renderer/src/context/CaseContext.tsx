@@ -28,6 +28,17 @@ export interface CaseRecord {
   fleetKey?: string;
 }
 
+export interface FleetWorkspaceOptions {
+  wipeStandard: string;
+  recoveryTypes: string[];
+  writeBlockerEnforced: boolean;
+  preScanEnabled: boolean;
+}
+
+export interface FleetWorkspaceMeta extends CaseRecord {
+  selectedOptions: FleetWorkspaceOptions;
+}
+
 export interface FleetNode {
   id: string;
   hostname: string;
@@ -72,6 +83,11 @@ interface CaseContextType {
   setIsWriteBlockerModalOpen: (open: boolean) => void;
   isFleetCreateModalOpen: boolean;
   setIsFleetCreateModalOpen: (open: boolean) => void;
+  isFleetJoinModalOpen: boolean;
+  setIsFleetJoinModalOpen: (open: boolean) => void;
+  isJoinedClientNode: boolean;
+  setIsJoinedClientNode: (val: boolean) => void;
+  joinedWorkspaceMeta: FleetWorkspaceMeta | null;
   isDemoModalOpen: boolean;
   setIsDemoModalOpen: (open: boolean) => void;
   protectedDrives: string[];
@@ -96,7 +112,8 @@ interface CaseContextType {
   selectedFleetNode: FleetNode | null;
   setSelectedFleetNode: (node: FleetNode | null) => void;
   isWebSocketConnected: boolean;
-  createFleetWorkspace: (name: string) => string;
+  createFleetWorkspace: (name: string, options: FleetWorkspaceOptions) => Promise<string>;
+  joinFleetWorkspace: (params: { roomCode: string }) => Promise<{ success: boolean; error?: string }>;
   toggleNodeSelection: (nodeId: string) => void;
   selectAllNodes: (selected: boolean) => void;
   dispatchBatchPreScan: () => void;
@@ -280,6 +297,9 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isCaseModalOpen, setIsCaseModalOpen] = useState<boolean>(false);
   const [isWriteBlockerModalOpen, setIsWriteBlockerModalOpen] = useState<boolean>(false);
   const [isFleetCreateModalOpen, setIsFleetCreateModalOpen] = useState<boolean>(false);
+  const [isFleetJoinModalOpen, setIsFleetJoinModalOpen] = useState<boolean>(false);
+  const [isJoinedClientNode, setIsJoinedClientNode] = useState<boolean>(false);
+  const [joinedWorkspaceMeta, setJoinedWorkspaceMeta] = useState<any>(null);
   const [isDemoModalOpen, setIsDemoModalOpen] = useState<boolean>(false);
 
   const [protectedDrives, setProtectedDrives] = useState<string[]>([]);
@@ -311,7 +331,7 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Fleet state
   const [fleetKey, setFleetKey] = useState<string>('CS-FLEET-8492');
   const [fleetWorkspaceName, setFleetWorkspaceName] = useState<string>('Campus Workstation Decommission Batch A');
-  const [connectedNodes, setConnectedNodes] = useState<FleetNode[]>(DEFAULT_FLEET_NODES);
+  const [connectedNodes, setConnectedNodes] = useState<FleetNode[]>([]);
   const [selectedFleetNode, setSelectedFleetNode] = useState<FleetNode | null>(null);
   const [isWebSocketConnected, setIsWebSocketConnected] = useState<boolean>(true);
 
@@ -433,6 +453,149 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (_) {}
   }, [activeCase]);
 
+  // Real-time Fleet WebSocket listeners
+  useEffect(() => {
+    if (!window.api) return;
+
+    const unsubs: Array<(() => void) | void> = [];
+
+    if (window.api.onFleetNodeJoined) {
+      unsubs.push(
+        window.api.onFleetNodeJoined((realNode: any) => {
+          setConnectedNodes(prev => {
+            const exists = prev.some(n => n.id === realNode.nodeId);
+            if (exists) {
+              return prev.map(n => n.id === realNode.nodeId ? {
+                ...n,
+                hostname: realNode.hostname,
+                ip: realNode.ip,
+                status: 'ONLINE',
+                lastLog: realNode.lastLog || n.lastLog
+              } : n);
+            }
+            const newNode: FleetNode = {
+              id: realNode.nodeId,
+              hostname: realNode.hostname,
+              ip: realNode.ip,
+              mac: realNode.mac || '00:00:00:00:00:00',
+              model: realNode.model || 'Remote Client Workstation',
+              storage: realNode.storage || 'Internal NVMe',
+              status: 'ONLINE',
+              progress: 0,
+              speed: '0 MB/s',
+              eta: '--',
+              selected: true,
+              lastLog: realNode.lastLog || 'Connected to local LAN WebSocket mesh.'
+            };
+            return [...prev, newNode];
+          });
+        })
+      );
+    }
+
+    if (window.api.onFleetNodePreScan) {
+      unsubs.push(
+        window.api.onFleetNodePreScan((realNode: any) => {
+          setConnectedNodes(prev => prev.map(n => {
+            if (n.id === realNode.nodeId) {
+              return {
+                ...n,
+                status: 'IDLE',
+                progress: 100,
+                speed: '0 MB/s',
+                eta: 'Done',
+                preScanFindings: realNode.preScanFindings,
+                lastLog: realNode.lastLog || 'Pre-Scan Complete: Findings synchronized.'
+              };
+            }
+            return n;
+          }));
+        })
+      );
+    }
+
+    if (window.api.onFleetTelemetry) {
+      unsubs.push(
+        window.api.onFleetTelemetry((data: { nodeId: string; telemetry: any }) => {
+          setConnectedNodes(prev => prev.map(n => {
+            if (n.id === data.nodeId) {
+              return {
+                ...n,
+                status: (data.telemetry.phase as any) || n.status,
+                progress: data.telemetry.progress,
+                speed: data.telemetry.speed,
+                eta: data.telemetry.eta,
+                lastLog: data.telemetry.logLine
+              };
+            }
+            return n;
+          }));
+        })
+      );
+    }
+
+    if (window.api.onFleetNodeComplete) {
+      unsubs.push(
+        window.api.onFleetNodeComplete((data: { nodeId: string; result: any }) => {
+          setConnectedNodes(prev => prev.map(n => {
+            if (n.id === data.nodeId) {
+              const isWipe = data.result.operation === 'WIPE';
+              return {
+                ...n,
+                status: isWipe ? 'VERIFIED' : 'IDLE',
+                progress: 100,
+                speed: '0 MB/s',
+                eta: 'Completed',
+                lastLog: data.result.summary
+              };
+            }
+            return n;
+          }));
+        })
+      );
+    }
+
+    if (window.api.onFleetNodeDisconnected) {
+      unsubs.push(
+        window.api.onFleetNodeDisconnected((nodeId: string) => {
+          setConnectedNodes(prev => prev.filter(n => n.id !== nodeId));
+        })
+      );
+    }
+
+    if (window.api.onFleetClientCommand) {
+      unsubs.push(
+        window.api.onFleetClientCommand((commandType: string) => {
+          console.log('[CaseContext] Secondary client received host command:', commandType);
+          if (commandType === 'PRE_SCAN_REQ') {
+            dispatchBatchPreScan();
+          } else if (commandType === 'EXEC_WIPE') {
+            dispatchBatchWipe('nist-clear');
+          } else if (commandType === 'EXEC_RECOVERY') {
+            dispatchBatchRecovery();
+          }
+        })
+      );
+    }
+
+    if (window.api.onFleetClientDisconnected) {
+      unsubs.push(
+        window.api.onFleetClientDisconnected(() => {
+          setIsWebSocketConnected(false);
+          setSelectedFleetNode(current => current ? {
+            ...current,
+            status: 'IDLE',
+            lastLog: 'Disconnected from the central fleet coordinator.'
+          } : current);
+        })
+      );
+    }
+
+    return () => {
+      unsubs.forEach(u => typeof u === 'function' && u());
+    };
+  }, []);
+
   const updateOperator = (op: OperatorProfile) => {
     setOperator(op);
   };
@@ -534,28 +697,143 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // Fleet Orchestration Methods
-  const createFleetWorkspace = (name: string): string => {
-    const generatedKey = `CS-FLEET-${Math.floor(1000 + Math.random() * 9000)}`;
-    setFleetKey(generatedKey);
-    setFleetWorkspaceName(name);
+  const createFleetWorkspace = async (name: string, options: FleetWorkspaceOptions): Promise<string> => {
+    if (!window.api?.createLobby || !window.api?.setFleetWorkspaceMeta) {
+      throw new Error('Fleet orchestration is only available in the CyberSanitize desktop app.');
+    }
 
-    // Create a matching fleet workspace record
+    const lobby = await window.api.createLobby(4096);
+    if (!lobby?.success || !lobby.roomCode) {
+      throw new Error(lobby?.error || 'Could not start the fleet workspace server.');
+    }
+
+    const roomCode = lobby.roomCode;
     const fleetCaseRecord: CaseRecord = {
-      caseId: `FLEET-${Math.floor(1000 + Math.random() * 9000)}`,
+      caseId: `FLEET-${roomCode.replace(/[^0-9A-Z]/gi, '')}`,
       title: name,
-      evidenceTag: `FLEET-${generatedKey}`,
+      evidenceTag: `FLEET-${roomCode}`,
       authorizingOfficer: operator.name,
       date: new Date().toISOString().split('T')[0],
-      notes: `Air-gapped multi-device fleet workspace [${generatedKey}] orchestrating parallel workstations.`,
+      notes: `Air-gapped multi-device fleet workspace [${roomCode}] orchestrating parallel workstations.`,
       classification: 'ENTERPRISE FLEET / NIST 800-88 REV 1',
       driveSerial: 'FLEET-STORAGE-MESH',
       status: 'ACTIVE',
       mode: 'MULTI',
-      fleetKey: generatedKey
+      fleetKey: roomCode
     };
+
+    const metaResult = await window.api.setFleetWorkspaceMeta({ ...fleetCaseRecord, selectedOptions: options });
+    if (!metaResult?.success) {
+      await window.api.closeLobby?.();
+      throw new Error(metaResult?.error || 'The workspace policy could not be published to the fleet host.');
+    }
+
     createCase(fleetCaseRecord);
+    setFleetKey(roomCode);
+    setFleetWorkspaceName(name);
+    setJoinedWorkspaceMeta({ ...fleetCaseRecord, selectedOptions: options });
+    setConnectedNodes([]);
+    setSelectedFleetNode(null);
+    setIsJoinedClientNode(false);
     setIsWebSocketConnected(true);
-    return generatedKey;
+    return roomCode;
+  };
+
+  const joinFleetWorkspace = async (params: { roomCode: string }): Promise<{ success: boolean; error?: string }> => {
+    const nodeId = `client-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    let remoteWorkspace: any = null;
+    let localNodeDetails: { hostname: string; ip: string; mac: string; model: string; storage: string } | undefined;
+
+    if (!window.api?.joinLobby) {
+      return { success: false, error: 'Fleet joining is only available in the CyberSanitize desktop app.' };
+    }
+
+    try {
+      const res = await window.api.joinLobby({
+        roomCode: params.roomCode,
+        nodeId
+      });
+
+      if (!res.success) {
+        return { success: false, error: res.error || 'Failed to authenticate with host' };
+      }
+      remoteWorkspace = res.workspaceMeta;
+      localNodeDetails = res.node;
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+
+    const hostMeta: FleetWorkspaceMeta = remoteWorkspace || {
+      caseId: `FLEET-${params.roomCode}`,
+      title: `Central Fleet Mesh Workspace (${params.roomCode})`,
+      evidenceTag: `AST-${params.roomCode}`,
+      authorizingOfficer: 'Lead Administrator / Central Fleet Hub',
+      date: new Date().toISOString().split('T')[0],
+      notes: `Air-gapped multi-device fleet workspace [${params.roomCode}] orchestrating this workstation.`,
+      classification: 'CENTRAL FLEET CLIENT / NIST SP 800-88',
+      driveSerial: 'LOCAL-SECONDARY-NVME',
+      selectedOptions: {
+        wipeStandard: 'nist-clear',
+        recoveryTypes: ['DOCX', 'PDF', 'SQLITE'],
+        writeBlockerEnforced: true,
+        preScanEnabled: true
+      }
+    };
+
+    const joinedCase: CaseRecord = {
+      caseId: hostMeta.caseId || `FLEET-${params.roomCode}`,
+      title: hostMeta.title || `Central Fleet Mesh Workspace (${params.roomCode})`,
+      evidenceTag: hostMeta.evidenceTag || `AST-${params.roomCode}`,
+      authorizingOfficer: hostMeta.authorizingOfficer || 'Lead Administrator',
+      date: hostMeta.date || new Date().toISOString().split('T')[0],
+      notes: hostMeta.notes || 'Air-gapped multi-device secondary station.',
+      classification: hostMeta.classification || 'CENTRAL FLEET CLIENT',
+      driveSerial: hostMeta.driveSerial || 'LOCAL-SECONDARY-NVME',
+      status: 'ACTIVE',
+      mode: 'MULTI',
+      fleetKey: params.roomCode
+    };
+
+    createCase(joinedCase);
+    setFleetKey(params.roomCode);
+    setFleetWorkspaceName(joinedCase.title);
+    setJoinedWorkspaceMeta(hostMeta);
+
+    const clientNode: FleetNode = {
+      id: nodeId,
+      hostname: localNodeDetails?.hostname || 'This Workstation',
+      ip: localNodeDetails?.ip || 'Network address unavailable',
+      mac: localNodeDetails?.mac || '00:1A:2B:3C:99:EE',
+      model: localNodeDetails?.model || 'Joined Secondary Workstation',
+      storage: localNodeDetails?.storage || 'Storage inventory pending',
+      status: 'ONLINE',
+      progress: 0,
+      speed: '0 MB/s',
+      eta: '--',
+      selected: true,
+      lastLog: `Connected to central fleet room ${params.roomCode} via LAN discovery.`
+    };
+
+    setSelectedFleetNode(clientNode);
+    setIsJoinedClientNode(true);
+    setIsWebSocketConnected(true);
+    setOrchestrationMode('MULTI');
+
+    setSelectedDrive({
+      number: 0,
+      friendlyName: `${clientNode.hostname} Storage (${clientNode.storage})`,
+      size: 512 * 1024 * 1024 * 1024,
+      formattedSize: clientNode.storage,
+      busType: 'NVMe Direct',
+      mediaType: 'Fixed Media',
+      isRemovable: false,
+      isBoot: false,
+      isPartition: true,
+      path: `\\\\.\\${clientNode.hostname}\\PHYSICALDRIVE0`
+    });
+
+    return { success: true };
   };
 
   const toggleNodeSelection = (nodeId: string) => {
@@ -567,6 +845,12 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const dispatchBatchPreScan = () => {
+    // Dispatch real IPC broadcast to connected fleet nodes
+    if (window.api?.broadcastPreScan) {
+      const selectedIds = connectedNodes.filter(n => n.selected).map(n => n.id);
+      window.api.broadcastPreScan(selectedIds.length > 0 ? selectedIds : undefined).catch(console.warn);
+    }
+
     setConnectedNodes(prev => prev.map(node => {
       if (!node.selected) return node;
       return {
@@ -603,6 +887,12 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const dispatchBatchWipe = (standard = 'nist-clear') => {
+    // Dispatch real IPC broadcast to connected fleet nodes
+    if (window.api?.broadcastWipe) {
+      const selectedIds = connectedNodes.filter(n => n.selected).map(n => n.id);
+      window.api.broadcastWipe(standard, selectedIds.length > 0 ? selectedIds : undefined).catch(console.warn);
+    }
+
     setConnectedNodes(prev => prev.map(node => {
       if (!node.selected) return node;
       return {
@@ -638,6 +928,12 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const dispatchBatchRecovery = (types = ['DOCX', 'PDF', 'SQLITE']) => {
+    // Dispatch real IPC broadcast to connected fleet nodes
+    if (window.api?.broadcastRecovery) {
+      const selectedIds = connectedNodes.filter(n => n.selected).map(n => n.id);
+      window.api.broadcastRecovery(types, selectedIds.length > 0 ? selectedIds : undefined).catch(console.warn);
+    }
+
     setConnectedNodes(prev => prev.map(node => {
       if (!node.selected) return node;
       return {
@@ -688,6 +984,15 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const backToLanding = () => {
+    if (isJoinedClientNode) {
+      void window.api?.leaveFleetWorkspace?.().catch((error: unknown) => {
+        console.warn('[CaseContext] Could not close fleet client connection:', error);
+      });
+      setIsJoinedClientNode(false);
+      setJoinedWorkspaceMeta(null);
+      setSelectedFleetNode(null);
+      setIsWebSocketConnected(false);
+    }
     setSelectedFleetNode(null);
     setOrchestrationMode('LANDING');
   };
@@ -715,6 +1020,11 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsWriteBlockerModalOpen,
         isFleetCreateModalOpen,
         setIsFleetCreateModalOpen,
+        isFleetJoinModalOpen,
+        setIsFleetJoinModalOpen,
+        isJoinedClientNode,
+        setIsJoinedClientNode,
+        joinedWorkspaceMeta,
         isDemoModalOpen,
         setIsDemoModalOpen,
         protectedDrives,
@@ -739,6 +1049,7 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSelectedFleetNode,
         isWebSocketConnected,
         createFleetWorkspace,
+        joinFleetWorkspace,
         toggleNodeSelection,
         selectAllNodes,
         dispatchBatchPreScan,

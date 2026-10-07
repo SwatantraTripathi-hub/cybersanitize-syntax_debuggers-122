@@ -47,8 +47,13 @@ function createWindow(): void {
   })
 }
 
+import { registerFleetIpc } from './ipc/fleet.ipc'
+
 app.whenReady().then(() => {
   createWindow()
+  if (mainWindow) {
+    registerFleetIpc(mainWindow)
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

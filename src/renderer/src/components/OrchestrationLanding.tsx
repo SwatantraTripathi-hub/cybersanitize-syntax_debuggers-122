@@ -10,7 +10,8 @@ import {
   Briefcase,
   FolderPlus,
   Play,
-  ShieldCheck
+  ShieldCheck,
+  Radio
 } from 'lucide-react'
 import { useCase } from '../context/CaseContext'
 
@@ -22,6 +23,7 @@ export const OrchestrationLanding: React.FC = () => {
     setOrchestrationMode,
     setIsCaseModalOpen,
     setIsFleetCreateModalOpen,
+    setIsFleetJoinModalOpen,
     setIsWriteBlockerModalOpen,
     setIsDemoModalOpen,
     protectedDrives
@@ -60,6 +62,16 @@ export const OrchestrationLanding: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3 text-xs">
+          {/* Join Fleet Workspace Button */}
+          <button
+            onClick={() => setIsFleetJoinModalOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-300 hover:border-emerald-500 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs transition shadow-xs"
+            title="Join an active fleet room hosted on another workstation"
+          >
+            <Radio className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+            <span>Join Workspace</span>
+          </button>
+
           {/* Write Protection Status */}
           <button
             onClick={() => setIsWriteBlockerModalOpen(true)}
@@ -191,13 +203,20 @@ export const OrchestrationLanding: React.FC = () => {
               </div>
             </div>
 
-            <div className="pt-8 mt-6 border-t border-atlas-border">
+            <div className="pt-8 mt-6 border-t border-atlas-border flex flex-col sm:flex-row gap-2.5">
               <button
                 onClick={handleLaunchFleet}
-                className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-3 px-5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition group-hover:shadow-md"
+                className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white py-3 px-4 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition group-hover:shadow-md"
               >
-                <span>Create Fleet Workspace</span>
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                <span>Create Fleet</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+              </button>
+              <button
+                onClick={() => setIsFleetJoinModalOpen(true)}
+                className="atlas-btn-secondary py-3 px-4 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5"
+              >
+                <Radio className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Join Fleet</span>
               </button>
             </div>
           </div>
