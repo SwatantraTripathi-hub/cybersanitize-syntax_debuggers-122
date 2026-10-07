@@ -242,13 +242,16 @@ try {
           partitions: diskPartitionInfos
         };
 
-        driveResults.push(parentDriveInfo);
+        // Only show parent physical drive if it has NO visible partitions (e.g. unpartitioned / raw media)
+        if (diskPartitionInfos.length === 0) {
+          driveResults.push(parentDriveInfo);
+        }
 
         // Partition entries (only partitions that appear in File Explorer)
         for (const p of diskPartitionInfos) {
-          const labelSuffix = p.label ? ` "${p.label}"` : '';
+          const displayName = p.label ? p.label : (p.parentDeviceName || (p.isRemovable ? 'USB Drive' : 'Local Disk'));
           const fsSuffix = p.fileSystem ? `, ${p.fileSystem}` : '';
-          const partName = `[${p.driveLetter}:]${labelSuffix} — ${p.parentDeviceName} (${p.formattedSize}${fsSuffix})`;
+          const partName = `[${p.driveLetter}:] ${displayName} (${p.formattedSize}${fsSuffix})`;
 
           driveResults.push({
             number: 1000 + d.Number * 10 + p.partitionNumber,
@@ -286,10 +289,10 @@ try {
           const volSize = Number(v.Size) || 0;
           const formattedVolSize = this.formatBytes(volSize);
           const isRem = v.DriveType === 'Removable';
-          const labelSuffix = v.FileSystemLabel ? ` "${v.FileSystemLabel}"` : '';
+          const displayName = v.FileSystemLabel || (isRem ? 'USB Drive' : 'Local Disk');
           driveResults.push({
             number: 900 + letter.charCodeAt(0),
-            friendlyName: `[${letter}:]${labelSuffix} (${formattedVolSize}, ${v.FileSystemType || 'FAT32'})`,
+            friendlyName: `[${letter}:] ${displayName} (${formattedVolSize}, ${v.FileSystemType || 'FAT32'})`,
             busType: isRem ? 'USB' : 'Logical',
             mediaType: isRem ? 'Removable USB Partition' : 'Fixed Internal Partition',
             size: volSize,
@@ -310,22 +313,16 @@ try {
         }
       }
 
-      // Sort: Removable USB items first, parent disk followed by its partitions
+      // Sort: Removable external storage first, alphabetical by drive letter (e.g. D:, E:, then internal C:)
       driveResults.sort((a, b) => {
         if (a.isRemovable && !b.isRemovable) return -1;
         if (!a.isRemovable && b.isRemovable) return 1;
 
-        const aParent = a.parentDiskNumber ?? a.number;
-        const bParent = b.parentDiskNumber ?? b.number;
+        const aLetter = a.driveLetter || '';
+        const bLetter = b.driveLetter || '';
+        if (aLetter && bLetter) return aLetter.localeCompare(bLetter);
 
-        if (aParent !== bParent) {
-          return aParent - bParent;
-        }
-
-        if (!a.isPartition && b.isPartition) return -1;
-        if (a.isPartition && !b.isPartition) return 1;
-
-        return (a.partitionNumber || 0) - (b.partitionNumber || 0);
+        return a.number - b.number;
       });
 
       return driveResults;
