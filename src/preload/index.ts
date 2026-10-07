@@ -7,7 +7,7 @@ let carvingProgressListener: ((_event: any, progress: any) => void) | null = nul
 
 const api = {
   // Drive operations
-  detectDrives: () => ipcRenderer.invoke('drive:detect'),
+  detectDrives: (forceRefresh?: boolean) => ipcRenderer.invoke('drive:detect', forceRefresh),
   getDriveInfo: (driveNumber: number) => ipcRenderer.invoke('drive:get-info', driveNumber),
 
   // Wipe operations

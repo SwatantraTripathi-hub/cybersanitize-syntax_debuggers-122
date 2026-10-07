@@ -6,6 +6,7 @@ import { registerFileEraseIpc } from './fileErase.ipc';
 import { registerCarveIpc } from './carve.ipc';
 import { registerAuditIpc } from './audit.ipc';
 import { registerReportIpc } from './report.ipc';
+import { registerFleetIpc } from './fleet.ipc';
 
 export * from './drive.ipc';
 export * from './writeBlocker.ipc';
@@ -14,6 +15,7 @@ export * from './fileErase.ipc';
 export * from './carve.ipc';
 export * from './audit.ipc';
 export * from './report.ipc';
+export * from './fleet.ipc';
 
 export function registerAllIpc(mainWindow?: BrowserWindow | null): void {
   // App utility
@@ -28,5 +30,7 @@ export function registerAllIpc(mainWindow?: BrowserWindow | null): void {
   registerCarveIpc(mainWindow);
   registerAuditIpc();
   registerReportIpc();
+  if (mainWindow) {
+    registerFleetIpc(mainWindow);
+  }
 }
-

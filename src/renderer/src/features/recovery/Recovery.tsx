@@ -67,38 +67,7 @@ export const Recovery: React.FC = () => {
   // Prior sanitization & integrity verification status
   const [integrityStatus, setIntegrityStatus] = useState<{ detected: boolean; message: string } | null>(null)
 
-  const [recoveredFiles, setRecoveredFiles] = useState<RecoveredFile[]>([
-    {
-      name: 'annual_audit_report_2025.pdf',
-      type: 'PDF',
-      size: 1420500,
-      confidence: 96,
-      category: 'Documents',
-      fileStatus: 'RECOVERED',
-      offset: 0x00104000,
-      sha256: 'a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e'
-    },
-    {
-      name: 'facility_blueprint_diagram.png',
-      type: 'PNG',
-      size: 3200400,
-      confidence: 92,
-      category: 'Images',
-      fileStatus: 'RECOVERED',
-      offset: 0x00452000,
-      sha256: '7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2'
-    },
-    {
-      name: 'customer_credentials_vault.sqlite',
-      type: 'SQLITE',
-      size: 5120000,
-      confidence: 88,
-      category: 'Databases',
-      fileStatus: 'RECOVERED',
-      offset: 0x0089a000,
-      sha256: 'c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a'
-    }
-  ])
+  const [recoveredFiles, setRecoveredFiles] = useState<RecoveredFile[]>([])
 
   const [selectedHexFile, setSelectedHexFile] = useState<RecoveredFile | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -189,7 +158,8 @@ export const Recovery: React.FC = () => {
   const handleCreateTestContainer = async () => {
     if (window.api?.createTestImage) {
       try {
-        const path = await window.api.createTestImage(20)
+        const res = await window.api.createTestImage(20)
+        const path = typeof res === 'string' ? res : res?.filePath
         if (path) {
           setSourcePath(path)
           setSelectedDrive({
@@ -235,12 +205,14 @@ export const Recovery: React.FC = () => {
             role: operator.role
           }
         })
-        if (res.success && res.filesFound) {
-          setRecoveredFiles(res.filesFound)
-          setPreWipeFiles(res.filesFound)
+        if (res && (res.success || Array.isArray(res.filesFound))) {
+          const found = Array.isArray(res.filesFound) ? res.filesFound : []
+          setRecoveredFiles(found)
+          setPreWipeFiles(found)
           setStatus('completed')
-          setProgress({ percentage: 100, filesFound: res.filesFound.length, stage: 'Scan Complete' })
+          setProgress({ percentage: 100, filesFound: found.length, stage: 'Scan Complete' })
           drawHeatmap(100, true)
+          return
         }
         return
       } catch (e: any) {
@@ -368,26 +340,66 @@ export const Recovery: React.FC = () => {
             </div>
 
             <div className="space-y-1.5 max-h-44 overflow-y-auto">
-              {drives.map((d, i) => {
-                const isSelected = sourcePath === d.path
-                return (
-                  <div
-                    key={i}
-                    onClick={() => {
-                      setSourcePath(d.path)
-                      setSelectedDrive(d)
-                    }}
-                    className={`p-2.5 rounded-lg border cursor-pointer transition text-xs ${
-                      isSelected
-                        ? 'border-atlas-forest bg-atlas-lightgreen/40 shadow-xs'
-                        : 'border-atlas-border hover:border-atlas-borderhover bg-white'
-                    }`}
-                  >
-                    <div className="font-bold text-atlas-navy truncate">{d.friendlyName}</div>
-                    <div className="text-[10px] font-mono text-atlas-muted mt-0.5">{d.formattedSize} • {d.busType}</div>
-                  </div>
-                )
-              })}
+              {drives.length === 0 ? (
+                <div className="p-4 text-center text-atlas-muted border border-dashed border-atlas-border rounded-lg text-xs space-y-1">
+                  <p className="font-semibold text-atlas-navy">No storage media detected</p>
+                  <p className="text-[11px]">Insert a removable drive or click "Mount Test Media (20 MB)" above.</p>
+                </div>
+              ) : (
+                drives.map((d, i) => {
+                  const isSelected = sourcePath === d.path
+                  return (
+                    <div
+                      key={i}
+                      onClick={() => {
+                        setSourcePath(d.path)
+                        setSelectedDrive(d)
+                      }}
+                      className={`p-2.5 rounded-lg border cursor-pointer transition text-xs flex items-center justify-between ${
+                        isSelected
+                          ? 'border-atlas-forest bg-atlas-lightgreen/40 shadow-xs ring-1 ring-atlas-forest/30'
+                          : 'border-atlas-border hover:border-atlas-borderhover bg-white'
+                      }`}
+                      title={d.friendlyName}
+                    >
+                      <div className="space-y-1 min-w-0 flex-1 pr-2">
+                        <div className="font-semibold text-atlas-navy break-words leading-snug">
+                          {d.friendlyName}
+                        </div>
+                        <div className="text-[10px] font-mono text-atlas-muted mt-1 flex items-center gap-1.5 flex-wrap">
+                          <span className="font-mono text-[9px] text-atlas-forest font-semibold">{d.path}</span>
+                          <span>•</span>
+                          <span className="font-semibold text-atlas-navy">{d.formattedSize || d.sizeFormatted || 'Storage'}</span>
+                          <span>•</span>
+                          <span>{d.busType || (d.isRemovable ? 'USB' : 'Internal')}</span>
+                          {d.fileSystem && (
+                            <>
+                              <span>•</span>
+                              <span className="uppercase text-[9px] px-1 py-0.2 bg-gray-100 rounded border border-gray-200">{d.fileSystem}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 text-right">
+                        {d.isBoot ? (
+                          <span className="text-[9px] font-mono font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded border border-red-200">
+                            HOST OS
+                          </span>
+                        ) : d.isRemovable ? (
+                          <span className="text-[9px] font-mono font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-200">
+                            EXTERNAL
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-mono font-bold text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
+                            INTERNAL
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })
+              )}
             </div>
           </div>
 
@@ -544,42 +556,56 @@ export const Recovery: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-atlas-border">
-                    {filteredFiles.map((file, i) => (
-                      <tr key={i} className="hover:bg-atlas-bg transition">
-                        <td className="py-2.5 font-semibold text-atlas-navy flex items-center gap-2 truncate max-w-[240px]">
-                          <FileText className="w-3.5 h-3.5 text-atlas-forest shrink-0" />
-                          <span className="truncate">{file.name}</span>
-                        </td>
-                        <td className="py-2.5 font-mono text-atlas-muted text-[11px]">{file.type}</td>
-                        <td className="py-2.5 font-mono text-atlas-muted text-[11px]">
-                          {(file.size / 1024).toFixed(1)} KB
-                        </td>
-                        <td className="py-2.5">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-atlas-lightgreen text-atlas-forest border border-atlas-bordergreen">
-                            {file.confidence}%
-                          </span>
-                        </td>
-                        <td className="py-2.5 text-right space-x-1.5 whitespace-nowrap">
-                          <button
-                            onClick={() => setSelectedHexFile(file)}
-                            className="px-2 py-1 rounded border border-atlas-border hover:bg-atlas-bg text-atlas-navy font-semibold text-[11px] transition inline-flex items-center gap-1"
-                            title="Inspect raw sector hex data"
-                          >
-                            <Eye className="w-3 h-3 text-atlas-forest" />
-                            <span>Hex</span>
-                          </button>
-
-                          <button
-                            onClick={() => handleExportFile(file)}
-                            className="px-2 py-1 rounded border border-atlas-bordergreen bg-atlas-lightgreen text-atlas-forest font-semibold text-[11px] hover:bg-emerald-100 transition inline-flex items-center gap-1"
-                            title="Export recovered file"
-                          >
-                            <Download className="w-3 h-3" />
-                            <span>Save</span>
-                          </button>
+                    {filteredFiles.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-12 text-center text-atlas-muted">
+                          <Folder className="w-8 h-8 mx-auto mb-2 text-atlas-muted opacity-40" />
+                          <div className="font-semibold text-atlas-navy">No recovered files found</div>
+                          <div className="text-[11px] mt-0.5">
+                            {status === 'running'
+                              ? 'Scanning sectors in progress...'
+                              : 'Select target media and click "Start Recovery Scan" to analyze sectors.'}
+                          </div>
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      filteredFiles.map((file, i) => (
+                        <tr key={i} className="hover:bg-atlas-bg transition">
+                          <td className="py-2.5 font-semibold text-atlas-navy flex items-center gap-2 truncate max-w-[240px]">
+                            <FileText className="w-3.5 h-3.5 text-atlas-forest shrink-0" />
+                            <span className="truncate">{file.name}</span>
+                          </td>
+                          <td className="py-2.5 font-mono text-atlas-muted text-[11px]">{file.type}</td>
+                          <td className="py-2.5 font-mono text-atlas-muted text-[11px]">
+                            {(file.size / 1024).toFixed(1)} KB
+                          </td>
+                          <td className="py-2.5">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-atlas-lightgreen text-atlas-forest border border-atlas-bordergreen">
+                              {file.confidence}%
+                            </span>
+                          </td>
+                          <td className="py-2.5 text-right space-x-1.5 whitespace-nowrap">
+                            <button
+                              onClick={() => setSelectedHexFile(file)}
+                              className="px-2 py-1 rounded border border-atlas-border hover:bg-atlas-bg text-atlas-navy font-semibold text-[11px] transition inline-flex items-center gap-1"
+                              title="Inspect raw sector hex data"
+                            >
+                              <Eye className="w-3 h-3 text-atlas-forest" />
+                              <span>Hex</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleExportFile(file)}
+                              className="px-2 py-1 rounded border border-atlas-bordergreen bg-atlas-lightgreen text-atlas-forest font-semibold text-[11px] hover:bg-emerald-100 transition inline-flex items-center gap-1"
+                              title="Export recovered file"
+                            >
+                              <Download className="w-3 h-3" />
+                              <span>Save</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>

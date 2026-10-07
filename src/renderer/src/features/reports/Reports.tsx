@@ -64,23 +64,10 @@ export const Reports: React.FC = () => {
     try {
       if (window.api?.listReports) {
         const reps = await window.api.listReports(activeCase.caseId)
-        if (reps && reps.length > 0) {
+        if (reps) {
           setReports(reps)
         } else {
-          // Default mock report for immediate preview
-          setReports([
-            {
-              id: '1',
-              path: 'C:\\CyberSanitize\\Reports\\CERT_2026_NIST_0081.pdf',
-              title: 'Certified Media Sanitization Certificate (NIST SP 800-88)',
-              certRef: 'CERT-2026-NIST-0081',
-              caseId: activeCase.caseId,
-              operatorId: operator.operatorId,
-              date: new Date().toISOString().split('T')[0],
-              verifyUrl: 'http://127.0.0.1:3847/verify?ref=CERT-2026-NIST-0081',
-              qrPayload: 'ED25519:NIST_PURGE:CERT-2026-NIST-0081:SIG_4F1A88BC9012'
-            }
-          ])
+          setReports([])
         }
       }
       if (window.api?.getAuditLogs) {
@@ -314,69 +301,86 @@ export const Reports: React.FC = () => {
       {/* TAB 1: Certificate Archive */}
       {activeTab === 'list' && (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {reports.map((report) => (
-              <div
-                key={report.id}
-                className="atlas-card p-5 bg-white space-y-4 flex flex-col justify-between shadow-atlas hover:shadow-atlas-hover transition"
+          {reports.length === 0 ? (
+            <div className="atlas-card p-12 bg-white text-center space-y-3">
+              <FileText className="w-10 h-10 mx-auto text-atlas-muted opacity-40" />
+              <div className="font-bold text-sm text-atlas-navy">No certificates generated yet</div>
+              <p className="text-xs text-atlas-muted max-w-md mx-auto">
+                Certificates generated for drive sanitization, recovery, or file erasure in this workspace will be listed here with cryptographic signatures.
+              </p>
+              <button
+                onClick={() => setActiveTab('generate')}
+                className="atlas-btn-primary px-4 py-1.5 text-xs font-semibold inline-flex items-center gap-1.5"
               >
-                <div className="space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-lg bg-atlas-lightgreen border border-atlas-bordergreen flex items-center justify-center text-atlas-forest shadow-xs">
-                        <FileText className="w-5 h-5" />
+                <Download className="w-3.5 h-3.5" />
+                <span>Generate Certificate</span>
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {reports.map((report) => (
+                <div
+                  key={report.id}
+                  className="atlas-card p-5 bg-white space-y-4 flex flex-col justify-between shadow-atlas hover:shadow-atlas-hover transition"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-lg bg-atlas-lightgreen border border-atlas-bordergreen flex items-center justify-center text-atlas-forest shadow-xs">
+                          <FileText className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <span className="font-mono text-[10px] font-bold text-atlas-forest bg-atlas-bg px-2 py-0.5 rounded border border-atlas-border">
+                            {report.certRef}
+                          </span>
+                          <h3 className="font-bold text-sm text-atlas-navy mt-1 leading-snug">{report.title}</h3>
+                        </div>
                       </div>
-                      <div>
-                        <span className="font-mono text-[10px] font-bold text-atlas-forest bg-atlas-bg px-2 py-0.5 rounded border border-atlas-border">
-                          {report.certRef}
-                        </span>
-                        <h3 className="font-bold text-sm text-atlas-navy mt-1 leading-snug">{report.title}</h3>
-                      </div>
+                    </div>
+
+                    <div className="text-[11px] font-mono text-atlas-muted bg-atlas-bg p-3 rounded-lg border border-atlas-border space-y-1">
+                      <div>Workspace: <strong className="text-atlas-navy">{report.caseId}</strong></div>
+                      <div>Administrator: <strong className="text-atlas-navy">{report.operatorId}</strong></div>
+                      <div>Date: <strong className="text-atlas-navy">{report.date}</strong></div>
                     </div>
                   </div>
 
-                  <div className="text-[11px] font-mono text-atlas-muted bg-atlas-bg p-3 rounded-lg border border-atlas-border space-y-1">
-                    <div>Workspace: <strong className="text-atlas-navy">{report.caseId}</strong></div>
-                    <div>Administrator: <strong className="text-atlas-navy">{report.operatorId}</strong></div>
-                    <div>Date: <strong className="text-atlas-navy">{report.date}</strong></div>
-                  </div>
-                </div>
-
-                {/* Actions Row */}
-                <div className="pt-3 border-t border-atlas-border flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <button
-                    onClick={() => handleOpenQrModal(report)}
-                    className="atlas-btn-primary px-3 py-1.5 font-bold flex items-center gap-1.5 shadow-xs"
-                  >
-                    <QrCode className="w-3.5 h-3.5" />
-                    <span>View QR Code</span>
-                  </button>
-
-                  <div className="flex items-center gap-1.5">
+                  {/* Actions Row */}
+                  <div className="pt-3 border-t border-atlas-border flex flex-wrap items-center justify-between gap-2 text-xs">
                     <button
-                      onClick={() => {
-                        if (window.api?.openReport) window.api.openReport(report.path)
-                        else alert(`Opening PDF: ${report.path}`)
-                      }}
-                      className="atlas-btn-secondary px-3 py-1.5 font-semibold flex items-center gap-1"
+                      onClick={() => handleOpenQrModal(report)}
+                      className="atlas-btn-primary px-3 py-1.5 font-bold flex items-center gap-1.5 shadow-xs"
                     >
-                      <Download className="w-3 h-3 text-atlas-forest" />
-                      <span>Open PDF</span>
+                      <QrCode className="w-3.5 h-3.5" />
+                      <span>View QR Code</span>
                     </button>
 
-                    <button
-                      onClick={() => handleVerifyReportFile(report.path)}
-                      className="px-2.5 py-1.5 rounded-lg border border-atlas-border hover:bg-atlas-bg font-semibold text-atlas-navy text-[11px] flex items-center gap-1"
-                      title="Verify Signature"
-                    >
-                      <ShieldCheck className="w-3 h-3 text-atlas-forest" />
-                      <span>Verify</span>
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => {
+                          if (window.api?.openReport) window.api.openReport(report.path)
+                          else alert(`Opening PDF: ${report.path}`)
+                        }}
+                        className="atlas-btn-secondary px-3 py-1.5 font-semibold flex items-center gap-1"
+                      >
+                        <Download className="w-3 h-3 text-atlas-forest" />
+                        <span>Open PDF</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleVerifyReportFile(report.path)}
+                        className="px-2.5 py-1.5 rounded-lg border border-atlas-border hover:bg-atlas-bg font-semibold text-atlas-navy text-[11px] flex items-center gap-1"
+                        title="Verify Signature"
+                      >
+                        <ShieldCheck className="w-3 h-3 text-atlas-forest" />
+                        <span>Verify</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -405,24 +409,32 @@ export const Reports: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-atlas-border">
-                {auditLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-atlas-bg transition">
-                    <td className="py-2.5 px-3 font-mono font-bold text-atlas-forest">#{log.id}</td>
-                    <td className="py-2.5 px-3 font-bold text-atlas-navy">{log.operation}</td>
-                    <td className="py-2.5 px-3 font-mono text-atlas-muted text-[11px]">{log.target}</td>
-                    <td className="py-2.5 px-3">{log.operator || operator.name}</td>
-                    <td className="py-2.5 px-3 text-right">
-                      <button
-                        onClick={() => handleGenerateReport(log.id)}
-                        disabled={loadingLogId === log.id}
-                        className="atlas-btn-primary px-3 py-1 font-bold inline-flex items-center gap-1 shadow-xs text-xs"
-                      >
-                        <FileText className="w-3 h-3" />
-                        <span>{loadingLogId === log.id ? 'Compiling...' : 'Generate Certificate'}</span>
-                      </button>
+                {auditLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-10 text-center text-atlas-muted">
+                      No completed operations recorded yet to certify. Perform a recovery or wipe operation first.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  auditLogs.map((log) => (
+                    <tr key={log.id} className="hover:bg-atlas-bg transition">
+                      <td className="py-2.5 px-3 font-mono font-bold text-atlas-forest">#{log.id}</td>
+                      <td className="py-2.5 px-3 font-bold text-atlas-navy">{log.operation}</td>
+                      <td className="py-2.5 px-3 font-mono text-atlas-muted text-[11px]">{log.target}</td>
+                      <td className="py-2.5 px-3">{log.operator || operator.name}</td>
+                      <td className="py-2.5 px-3 text-right">
+                        <button
+                          onClick={() => handleGenerateReport(log.id)}
+                          disabled={loadingLogId === log.id}
+                          className="atlas-btn-primary px-3 py-1 font-bold inline-flex items-center gap-1 shadow-xs text-xs"
+                        >
+                          <FileText className="w-3 h-3" />
+                          <span>{loadingLogId === log.id ? 'Compiling...' : 'Generate Certificate'}</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

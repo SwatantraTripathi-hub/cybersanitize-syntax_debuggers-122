@@ -34,10 +34,10 @@ export const Dashboard: React.FC = () => {
   } = useCase()
 
   const [stats, setStats] = useState<{ total: number; carves: number; wipes: number; erases: number }>({
-    total: 25,
-    carves: 14,
-    wipes: 1,
-    erases: 8
+    total: 0,
+    carves: 0,
+    wipes: 0,
+    erases: 0
   })
   const [recentLogs, setRecentLogs] = useState<any[]>([])
   const [viewScope, setViewScope] = useState<'case' | 'all'>('case')
@@ -57,12 +57,6 @@ export const Dashboard: React.FC = () => {
   }
 
   useEffect(() => {
-    setRecentLogs([
-      { id: 104, operation: 'DRIVE_SANITIZATION', target: '\\\\.\\PhysicalDrive1', operator: operator.name, timestamp: '10:42:15', status: 'VERIFIED' },
-      { id: 103, operation: 'DATA_RECOVERY', target: 'Unallocated Sectors', operator: operator.name, timestamp: '10:38:22', status: 'COMPLETED' },
-      { id: 102, operation: 'WRITE_PROTECTION', target: 'Volume Lock Guard', operator: operator.name, timestamp: '10:35:10', status: 'ACTIVE' },
-      { id: 101, operation: 'WORKSPACE_INIT', target: activeCase.caseId, operator: operator.name, timestamp: '10:30:00', status: 'SEALED' }
-    ])
 
     const loadData = async () => {
       try {
@@ -372,20 +366,26 @@ export const Dashboard: React.FC = () => {
 
           <div className="bg-white border border-atlas-border rounded-xl p-3.5 shadow-atlas space-y-2">
             <div className="divide-y divide-atlas-border text-xs">
-              {recentLogs.slice(0, 4).map((log) => (
-                <div key={log.id} className="py-2 flex items-center justify-between first:pt-0 last:pb-0">
-                  <div className="space-y-0.5 truncate pr-2">
-                    <div className="font-bold text-atlas-navy text-[11px] truncate">{log.operation}</div>
-                    <div className="font-mono text-[10px] text-atlas-muted truncate">{log.target}</div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-atlas-lightgreen text-atlas-forest border border-atlas-bordergreen">
-                      {log.status}
-                    </span>
-                    <div className="text-[9px] font-mono text-atlas-muted mt-0.5">{log.timestamp}</div>
-                  </div>
+              {recentLogs.length === 0 ? (
+                <div className="py-8 text-center text-atlas-muted text-xs">
+                  No activity recorded yet in this workspace. Operations performed will appear here.
                 </div>
-              ))}
+              ) : (
+                recentLogs.slice(0, 4).map((log) => (
+                  <div key={log.id} className="py-2 flex items-center justify-between first:pt-0 last:pb-0">
+                    <div className="space-y-0.5 truncate pr-2">
+                      <div className="font-bold text-atlas-navy text-[11px] truncate">{log.operation}</div>
+                      <div className="font-mono text-[10px] text-atlas-muted truncate">{log.target}</div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-atlas-lightgreen text-atlas-forest border border-atlas-bordergreen">
+                        {log.status}
+                      </span>
+                      <div className="text-[9px] font-mono text-atlas-muted mt-0.5">{log.timestamp}</div>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

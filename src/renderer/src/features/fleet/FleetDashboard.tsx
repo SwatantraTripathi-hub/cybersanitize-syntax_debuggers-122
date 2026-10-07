@@ -243,17 +243,28 @@ export const FleetDashboard: React.FC = () => {
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {connectedNodes.map(node => (
-              <NodeCard
-                key={node.id}
-                node={node}
-                onToggleSelect={() => toggleNodeSelection(node.id)}
-                onOpenEngine={() => selectFleetNodeForEngine(node)}
-                onInspectPreScan={() => setIsPreScanModalOpen(true)}
-              />
-            ))}
-          </div>
+          {connectedNodes.length === 0 ? (
+            <div className="bg-white border border-atlas-border rounded-xl p-10 text-center space-y-3">
+              <Network className="w-10 h-10 text-atlas-muted opacity-40 mx-auto" />
+              <div className="font-bold text-sm text-atlas-navy">Waiting for secondary workstations to connect</div>
+              <p className="text-xs text-atlas-muted max-w-md mx-auto">
+                Secondary workstations on this local network can join this coordination room using room code{' '}
+                <strong className="font-mono text-atlas-forest">{fleetKey}</strong>.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {connectedNodes.map(node => (
+                <NodeCard
+                  key={node.id}
+                  node={node}
+                  onToggleSelect={() => toggleNodeSelection(node.id)}
+                  onOpenEngine={() => selectFleetNodeForEngine(node)}
+                  onInspectPreScan={() => setIsPreScanModalOpen(true)}
+                />
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Live Local Telemetry Drawer */}

@@ -1,4 +1,4 @@
-import { ipcMain, shell } from 'electron';
+import { ipcMain, shell, dialog } from 'electron';
 import * as fs from 'node:fs';
 import { ReportService } from '../services/reportService';
 import {
@@ -21,8 +21,17 @@ export function registerReportIpc(reportService: ReportService = ReportService.g
   });
 
   ipcMain.handle('report:verify-file', async (_, pdfPath?: unknown) => {
-    if (!pdfPath) return { isValid: false, error: 'No PDF path specified' };
-    const validPdf = assertSafeText(pdfPath, 'pdfPath', 4096);
+    let targetPath = pdfPath as string | undefined;
+    if (!targetPath) {
+      const { canceled, filePaths } = await dialog.showOpenDialog({
+        title: 'Select Certificate PDF to Verify',
+        filters: [{ name: 'PDF Certificates (*.pdf)', extensions: ['pdf'] }, { name: 'All Files (*.*)', extensions: ['*'] }],
+        properties: ['openFile']
+      });
+      if (canceled || filePaths.length === 0) return { isValid: false, error: 'No file selected' };
+      targetPath = filePaths[0];
+    }
+    const validPdf = assertSafeText(targetPath, 'pdfPath', 4096);
     return reportService.verifyFile(validPdf);
   });
 

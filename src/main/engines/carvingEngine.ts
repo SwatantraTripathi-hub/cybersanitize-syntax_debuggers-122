@@ -87,7 +87,7 @@ export class CarvingEngine extends EventEmitter {
             if (offset < 0 || seen.has(`${signature.name}:${offset}`)) continue
             const end = signature.footer ? find(data, signature.footer, position) : -1
             if (signature.footer && end === -1 && offset + data.length < sourceStats.size && data.length < signature.maxSize) continue
-            const available = end === -1 ? Math.min(signature.maxSize, sourceStats.size - offset) : end + signature.footer.length - offset
+            const available = end === -1 ? Math.min(signature.maxSize, sourceStats.size - offset) : end + (signature.footer ? signature.footer.length : 0) - offset
             if (available < signature.minSize || available > signature.maxSize) continue
             if (acceptedRanges.some((range) => offset < range.end && offset + available > range.start)) continue
             seen.add(`${signature.name}:${offset}`)

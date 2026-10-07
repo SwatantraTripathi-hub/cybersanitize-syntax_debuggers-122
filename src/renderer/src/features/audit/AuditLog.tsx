@@ -34,48 +34,30 @@ interface AuditBlock {
 export const AuditLog: React.FC = () => {
   const { activeCase, operator } = useCase()
 
-  const [logs, setLogs] = useState<AuditBlock[]>([
-    {
-      id: 1,
-      timestamp: new Date(Date.now() - 3600000).toISOString(),
-      operation: 'SYSTEM_INIT',
-      target: 'Audit Ledger Genesis',
-      status: 'VERIFIED',
-      operator: 'SYSTEM',
-      prev_hash: '0000000000000000000000000000000000000000000000000000000000000000',
-      entry_hash: '8f4a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4',
-      details: { engine: 'Better-SQLite3 WAL' }
-    },
-    {
-      id: 2,
-      timestamp: new Date(Date.now() - 2400000).toISOString(),
-      operation: 'WORKSPACE_REGISTER',
-      target: activeCase.caseId,
-      status: 'VERIFIED',
-      operator: operator.name,
-      prev_hash: '8f4a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4',
-      entry_hash: 'e9a2c5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a',
-      details: { title: activeCase.title, asset: activeCase.evidenceTag }
-    },
-    {
-      id: 3,
-      timestamp: new Date(Date.now() - 1200000).toISOString(),
-      operation: 'DRIVE_SANITIZATION',
-      target: '\\\\.\\PhysicalDrive1',
-      status: 'VERIFIED',
-      operator: operator.name,
-      prev_hash: 'e9a2c5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a',
-      entry_hash: '1b4f7a2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4',
-      details: { standard: 'NIST SP 800-88 Purge', entropy: 0.0000 }
-    }
-  ])
-
-  const [chainStatus, setChainStatus] = useState<{ intact: boolean; checkedBlocks?: number } | null>({ intact: true, checkedBlocks: 3 })
+  const [logs, setLogs] = useState<AuditBlock[]>([])
+  const [chainStatus, setChainStatus] = useState<{ intact: boolean; checkedBlocks?: number } | null>(null)
   const [isVerifying, setIsVerifying] = useState(false)
   const [search, setSearch] = useState('')
   const [filterOp, setFilterOp] = useState('ALL')
   const [selectedBlock, setSelectedBlock] = useState<AuditBlock | null>(null)
   const [showVisualizer, setShowVisualizer] = useState(false)
+
+  const loadLogs = async () => {
+    if (window.api?.getAuditLogs) {
+      try {
+        const data = await window.api.getAuditLogs({ limit: 100, caseId: activeCase.caseId })
+        if (data) {
+          setLogs(data)
+        }
+      } catch (err) {
+        console.warn('Failed to load audit logs:', err)
+      }
+    }
+  }
+
+  useEffect(() => {
+    loadLogs()
+  }, [activeCase.caseId])
 
   const handleVerifyChain = async () => {
     setIsVerifying(true)
@@ -89,10 +71,8 @@ export const AuditLog: React.FC = () => {
         console.warn(e)
       }
     }
-    setTimeout(() => {
-      setChainStatus({ intact: true, checkedBlocks: logs.length })
-      setIsVerifying(false)
-    }, 400)
+    setChainStatus({ intact: true, checkedBlocks: logs.length })
+    setIsVerifying(false)
   }
 
   const handleExportCSV = async () => {
@@ -254,23 +234,36 @@ export const AuditLog: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-atlas-border">
-            {filteredLogs.map(log => (
-              <tr key={log.id} className="hover:bg-atlas-bg transition">
-                <td className="py-3 px-4 font-mono font-bold text-atlas-forest">#{log.id}</td>
-                <td className="py-3 px-4 font-bold text-atlas-navy">{log.operation}</td>
-                <td className="py-3 px-4 font-mono text-atlas-muted text-[11px] truncate max-w-[200px]">{log.target}</td>
-                <td className="py-3 px-4 font-mono text-atlas-muted text-[11px]">{new Date(log.timestamp).toLocaleTimeString()}</td>
-                <td className="py-3 px-4 font-mono text-atlas-muted text-[11px]">{log.entry_hash.slice(0, 12)}...</td>
-                <td className="py-3 px-4 text-right">
-                  <button
-                    onClick={() => setSelectedBlock(log)}
-                    className="p-1 rounded hover:bg-atlas-border text-atlas-forest transition"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                  </button>
+            {filteredLogs.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="py-12 text-center text-atlas-muted">
+                  <ClipboardList className="w-8 h-8 mx-auto mb-2 text-atlas-muted opacity-40" />
+                  <div className="font-semibold text-atlas-navy">No audit ledger records found</div>
+                  <div className="text-[11px] mt-0.5">
+                    Operations executed in this workspace will be recorded and cryptographically sealed here.
+                  </div>
                 </td>
               </tr>
-            ))}
+            ) : (
+              filteredLogs.map(log => (
+                <tr key={log.id} className="hover:bg-atlas-bg transition">
+                  <td className="py-3 px-4 font-mono font-bold text-atlas-forest">#{log.id}</td>
+                  <td className="py-3 px-4 font-bold text-atlas-navy">{log.operation}</td>
+                  <td className="py-3 px-4 font-mono text-atlas-muted text-[11px] truncate max-w-[200px]">{log.target}</td>
+                  <td className="py-3 px-4 font-mono text-atlas-muted text-[11px]">{new Date(log.timestamp).toLocaleTimeString()}</td>
+                  <td className="py-3 px-4 font-mono text-atlas-muted text-[11px]">{log.entry_hash.slice(0, 12)}...</td>
+                  <td className="py-3 px-4 text-right">
+                    <button
+                      onClick={() => setSelectedBlock(log)}
+                      className="p-1 rounded hover:bg-atlas-border text-atlas-forest transition"
+                      title="Inspect block details"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>

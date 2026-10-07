@@ -25,10 +25,7 @@ interface FileItem {
 export const FileEraser: React.FC = () => {
   const { activeCase, operator } = useCase()
 
-  const [files, setFiles] = useState<FileItem[]>([
-    { name: 'Confidential_Financial_Forecast_2026.xlsx', path: 'C:\\Users\\Admin\\Documents\\Confidential_Financial_Forecast_2026.xlsx', size: '2.45 MB', isDirectory: false },
-    { name: 'Personnel_Offboarding_Records', path: 'C:\\Users\\Admin\\HR\\Personnel_Offboarding_Records', size: '48.10 MB', isDirectory: true }
-  ])
+  const [files, setFiles] = useState<FileItem[]>([])
 
   const [standard, setStandard] = useState<'nist-clear' | 'dod-3' | 'dod-7'>('dod-3')
   const [scrubMetadata, setScrubMetadata] = useState(true)
@@ -76,7 +73,7 @@ export const FileEraser: React.FC = () => {
     if (e.target.files) {
       const added: FileItem[] = Array.from(e.target.files).map((f: File) => ({
         name: f.name,
-        path: `C:\\Simulated\\Files\\${f.name}`,
+        path: (f as any).path || f.name,
         size: `${(f.size / (1024 * 1024)).toFixed(2)} MB`,
         isDirectory: false
       }))

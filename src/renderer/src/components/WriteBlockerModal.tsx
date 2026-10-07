@@ -119,11 +119,15 @@ export const WriteBlockerModal: React.FC = () => {
               }}
               className="w-full px-3 py-2 border border-atlas-border rounded-lg bg-atlas-bg focus:border-atlas-forest focus:outline-none font-mono text-xs"
             >
-              {drives.map((d, idx) => (
-                <option key={idx} value={d.path}>
-                  {d.friendlyName} — [{d.path}] ({d.formattedSize || 'Storage'})
-                </option>
-              ))}
+              {drives.length === 0 ? (
+                <option value="">No storage media detected</option>
+              ) : (
+                drives.map((d, idx) => (
+                  <option key={idx} value={d.path}>
+                    {d.friendlyName} — [{d.path}] ({d.formattedSize || 'Storage'})
+                  </option>
+                ))
+              )}
             </select>
           </div>
 

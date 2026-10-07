@@ -45,8 +45,8 @@ export const DriveEraser: React.FC = () => {
   } | null>(null)
 
   const [entropyRisk, setEntropyRisk] = useState<{ riskPercentage: number; shannonEntropy: number }>({
-    riskPercentage: 98,
-    shannonEntropy: 7.8542
+    riskPercentage: 0,
+    shannonEntropy: 0.0000
   })
 
   const [testImageCreated, setTestImageCreated] = useState<string | null>(null)
@@ -58,6 +58,23 @@ export const DriveEraser: React.FC = () => {
     { id: 'dod-3' as const, name: 'DoD 5220.22-M (3 Passes)', desc: 'Triple pass: Zeroes, ones, and pseudo-random byte stream.' },
     { id: 'dod-7' as const, name: 'DoD 5220.22-M ECE (7 Passes)', desc: 'Maximum security 7-pass alternating pattern overwrite.' }
   ]
+
+  useEffect(() => {
+    if (selectedDrive?.path && window.api?.getEntropySnapshot) {
+      window.api.getEntropySnapshot(selectedDrive.path).then((res: any) => {
+        if (res && typeof res.entropy === 'number') {
+          const ent = res.entropy
+          const pct = Math.min(100, Math.max(0, Math.round((ent / 8) * 100)))
+          setEntropyRisk({
+            riskPercentage: pct,
+            shannonEntropy: ent
+          })
+        }
+      }).catch((e) => console.warn('Live entropy query failed:', e))
+    } else if (!selectedDrive) {
+      setEntropyRisk({ riskPercentage: 0, shannonEntropy: 0.0000 })
+    }
+  }, [selectedDrive?.path])
 
   const drawHeatmap = (pct: number, isDone: boolean) => {
     if (!canvasRef.current) return
@@ -210,27 +227,27 @@ export const DriveEraser: React.FC = () => {
   const handleCreateTestContainer = async () => {
     if (window.api?.createTestImage) {
       try {
-        const imgPath = await window.api.createTestImage(256)
-        setTestImageCreated(imgPath)
-        refreshDrives(true)
-        return
+        const res = await window.api.createTestImage(256)
+        const imgPath = typeof res === 'string' ? res : res?.filePath
+        if (imgPath) {
+          setTestImageCreated(imgPath)
+          setSelectedDrive({
+            number: 99,
+            friendlyName: `[TEST MEDIA] ${imgPath.split(/[\\/]/).pop()} (256 MB)`,
+            size: 256 * 1024 * 1024,
+            formattedSize: '256.00 MB',
+            busType: 'Virtual Media',
+            mediaType: 'Virtual Disk',
+            isRemovable: true,
+            isBoot: false,
+            path: imgPath
+          })
+          refreshDrives(true)
+        }
       } catch (e) {
-        console.warn(e)
+        console.warn('Create test container error:', e)
       }
     }
-    const mockPath = 'C:\\Simulated\\Container_256MB.raw'
-    setTestImageCreated(mockPath)
-    setSelectedDrive({
-      number: 99,
-      friendlyName: 'Virtual Storage Test Container',
-      size: 256 * 1024 * 1024,
-      formattedSize: '256.00 MB',
-      busType: 'Virtual Block',
-      mediaType: 'Virtual File',
-      isRemovable: false,
-      isBoot: false,
-      path: mockPath
-    })
   }
 
   return (
@@ -281,47 +298,68 @@ export const DriveEraser: React.FC = () => {
             </div>
 
             <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-              {drives.map((d, idx) => {
-                const isSelected = selectedDrive?.path === d.path
-                const isBootDisk = d.isBoot
-                return (
-                  <div
-                    key={idx}
-                    onClick={() => {
-                      if (!isBootDisk) setSelectedDrive(d)
-                    }}
-                    className={`p-3 rounded-lg border transition cursor-pointer flex items-center justify-between text-xs ${
-                      isSelected
-                        ? 'border-atlas-forest bg-atlas-lightgreen/50 shadow-xs'
-                        : isBootDisk
-                        ? 'border-red-200 bg-red-50/40 opacity-70 cursor-not-allowed'
-                        : 'border-atlas-border hover:border-atlas-borderhover bg-white'
-                    }`}
-                  >
-                    <div className="space-y-0.5 truncate pr-2">
-                      <div className="font-bold text-atlas-navy flex items-center gap-1.5 truncate">
-                        <span className="font-mono text-[10px] text-atlas-forest">[{d.path}]</span>
-                        <span className="truncate">{d.friendlyName}</span>
+              {drives.length === 0 ? (
+                <div className="p-4 text-center text-atlas-muted border border-dashed border-atlas-border rounded-lg text-xs space-y-1">
+                  <p className="font-semibold text-atlas-navy">No target media detected</p>
+                  <p className="text-[11px]">Connect an external storage device or click "Mount Test Container (256 MB)" above.</p>
+                </div>
+              ) : (
+                drives.map((d, idx) => {
+                  const isSelected = selectedDrive?.path === d.path
+                  const isBootDisk = d.isBoot
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => {
+                        if (!isBootDisk) setSelectedDrive(d)
+                      }}
+                      className={`p-3 rounded-lg border transition cursor-pointer flex items-center justify-between text-xs ${
+                        isSelected
+                          ? 'border-atlas-forest bg-atlas-lightgreen/50 shadow-xs ring-1 ring-atlas-forest/30'
+                          : isBootDisk
+                          ? 'border-red-200 bg-red-50/40 opacity-70 cursor-not-allowed'
+                          : 'border-atlas-border hover:border-atlas-borderhover bg-white'
+                      }`}
+                      title={d.friendlyName}
+                    >
+                      <div className="space-y-1 min-w-0 flex-1 pr-2">
+                        <div className="font-semibold text-atlas-navy break-words leading-snug">
+                          <span>{d.friendlyName}</span>
+                        </div>
+                        <div className="text-[11px] text-atlas-muted font-mono flex items-center gap-1.5 flex-wrap">
+                          <span className="font-mono text-[10px] text-atlas-forest font-semibold">{d.path}</span>
+                          <span>•</span>
+                          <span className="font-semibold text-atlas-navy">{d.formattedSize || d.sizeFormatted || 'Storage'}</span>
+                          <span>•</span>
+                          <span>{d.busType || (d.isRemovable ? 'USB' : 'Internal')}</span>
+                          {d.fileSystem && (
+                            <>
+                              <span>•</span>
+                              <span className="uppercase text-[9px] px-1 py-0.2 bg-gray-100 rounded border border-gray-200">{d.fileSystem}</span>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-[11px] text-atlas-muted font-mono">
-                        {d.formattedSize || 'Storage'} • {d.busType || 'Direct I/O'}
-                      </div>
-                    </div>
 
-                    <div className="shrink-0 text-right">
-                      {isBootDisk ? (
-                        <span className="text-[10px] font-mono font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded">
-                          HOST OS
-                        </span>
-                      ) : isSelected ? (
-                        <span className="text-[10px] font-mono font-bold text-atlas-forest bg-white px-2 py-0.5 rounded border border-atlas-bordergreen">
-                          TARGET
-                        </span>
-                      ) : null}
+                      <div className="shrink-0 text-right">
+                        {isBootDisk ? (
+                          <span className="text-[10px] font-mono font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded border border-red-200">
+                            HOST OS
+                          </span>
+                        ) : d.isRemovable ? (
+                          <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200">
+                            EXTERNAL
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-mono font-bold text-gray-700 bg-gray-100 px-2 py-0.5 rounded border border-gray-200">
+                            INTERNAL
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )
-              })}
+                  )
+                })
+              )}
             </div>
 
             {selectedDrive?.isBoot && (
