@@ -100,7 +100,7 @@ const api = {
   // Fleet Orchestration
   createLobby: (port?: number) => ipcRenderer.invoke('fleet:create-lobby', port),
   setFleetWorkspaceMeta: (meta: any) => ipcRenderer.invoke('fleet:set-workspace-meta', meta),
-  joinLobby: (params: { hostIp: string; roomCode: string; nodeId: string; port?: number; nodeDetails?: any }) =>
+  joinLobby: (params: { roomCode: string; nodeId: string }) =>
     ipcRenderer.invoke('fleet:join-lobby', params),
   broadcastPreScan: (nodeIds?: string[]) => ipcRenderer.invoke('fleet:broadcast-prescan', nodeIds),
   broadcastWipe: (standard: string, nodeIds?: string[]) =>
@@ -108,6 +108,7 @@ const api = {
   broadcastRecovery: (fileTypes: string[], nodeIds?: string[]) =>
     ipcRenderer.invoke('fleet:broadcast-recovery', fileTypes, nodeIds),
   closeLobby: () => ipcRenderer.invoke('fleet:close-lobby'),
+  leaveFleetWorkspace: () => ipcRenderer.invoke('fleet:leave-client'),
   getFleetNodes: () => ipcRenderer.invoke('fleet:get-nodes'),
   getFleetStatus: () => ipcRenderer.invoke('fleet:get-status'),
   onFleetNodeJoined: (callback: (node: any) => void) => {
@@ -139,6 +140,11 @@ const api = {
     const listener = (_event: any, type: string) => callback(type)
     ipcRenderer.on('fleet:client-command', listener)
     return () => ipcRenderer.removeListener('fleet:client-command', listener)
+  },
+  onFleetClientDisconnected: (callback: () => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('fleet:client-disconnected', listener)
+    return () => ipcRenderer.removeListener('fleet:client-disconnected', listener)
   }
 }
 

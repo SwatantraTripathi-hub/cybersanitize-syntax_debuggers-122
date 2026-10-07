@@ -48,11 +48,12 @@ declare global {
       getQrDataUrl?: (text: string, options?: any) => Promise<string>
       createLobby?: (port?: number) => Promise<{ success: boolean; roomCode?: string; port?: number; error?: string }>
       setFleetWorkspaceMeta?: (meta: any) => Promise<{ success: boolean; error?: string }>
-      joinLobby?: (params: { hostIp: string; roomCode: string; nodeId: string; port?: number; nodeDetails?: any }) => Promise<{ success: boolean; workspaceMeta?: any; error?: string }>
+      joinLobby?: (params: { roomCode: string; nodeId: string }) => Promise<{ success: boolean; workspaceMeta?: any; node?: { hostname: string; ip: string; mac: string; model: string; storage: string }; error?: string }>
       broadcastPreScan?: (nodeIds?: string[]) => Promise<{ success: boolean; error?: string }>
       broadcastWipe?: (standard: string, nodeIds?: string[]) => Promise<{ success: boolean; error?: string }>
       broadcastRecovery?: (fileTypes: string[], nodeIds?: string[]) => Promise<{ success: boolean; error?: string }>
       closeLobby?: () => Promise<{ success: boolean }>
+      leaveFleetWorkspace?: () => Promise<{ success: boolean }>
       getFleetNodes?: () => Promise<any[]>
       getFleetStatus?: () => Promise<any>
       onFleetNodeJoined?: (callback: (node: any) => void) => () => void
@@ -61,6 +62,7 @@ declare global {
       onFleetNodeComplete?: (callback: (data: any) => void) => () => void
       onFleetNodeDisconnected?: (callback: (nodeId: string) => void) => () => void
       onFleetClientCommand?: (callback: (type: string) => void) => () => void
+      onFleetClientDisconnected?: (callback: () => void) => () => void
     }
   }
 }

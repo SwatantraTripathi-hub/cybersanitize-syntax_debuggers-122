@@ -13,7 +13,7 @@
 
 import { EventEmitter } from 'node:events'
 import { WebSocket } from 'ws'
-import os from 'node:os'
+import * as os from 'node:os'
 import { runPreScan } from './preScanEngine'
 import {
   FleetMessageType,
@@ -42,6 +42,7 @@ class FleetClient extends EventEmitter {
   private nodeId: string = ''
   private roomKey: string = ''
   private reconnectTimer: NodeJS.Timeout | null = null
+  private localNodeDetails: JoinRoomPayload | null = null
 
   /**
    * Connect to a fleet host and send JOIN_ROOM.
@@ -68,7 +69,7 @@ class FleetClient extends EventEmitter {
     roomKey: string,
     nodeId: string,
     nodeDetails?: { hostname?: string; model?: string; storage?: string }
-  ): Promise<{ success: boolean; workspaceMeta?: any; error?: string }> {
+  ): Promise<{ success: boolean; workspaceMeta?: any; node?: JoinRoomPayload; error?: string }> {
     this.nodeId = nodeId
     this.roomKey = roomKey
 
@@ -115,9 +116,10 @@ class FleetClient extends EventEmitter {
           ip,
           mac,
           model: nodeDetails?.model || `${os.type()} ${os.arch()}`,
-          storage: nodeDetails?.storage || 'Local NVMe Storage',
+          storage: nodeDetails?.storage || 'Local storage (inventory pending)',
           platform: process.platform
         }
+        this.localNodeDetails = payload
 
         this._send({
           type: FleetMessageType.JOIN_ROOM,
@@ -138,7 +140,7 @@ class FleetClient extends EventEmitter {
             if (!resolved) {
               resolved = true
               clearTimeout(timeout)
-              resolve({ success: true, workspaceMeta: this.workspaceMeta })
+              resolve({ success: true, workspaceMeta: this.workspaceMeta, node: this.localNodeDetails ?? undefined })
             }
           } else if (packet.type === FleetMessageType.ROOM_REJECTED) {
             const rejected = packet.payload as any

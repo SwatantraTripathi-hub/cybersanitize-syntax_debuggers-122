@@ -1,15 +1,11 @@
 import React, { useState } from 'react'
 import {
-  Network,
   X,
   Key,
-  Laptop,
-  HardDrive,
   ArrowRight,
   ShieldCheck,
   AlertCircle,
   Radio,
-  CheckCircle2,
   RefreshCw
 } from 'lucide-react'
 import { useCase } from '../context/CaseContext'
@@ -21,11 +17,7 @@ export const FleetJoinModal: React.FC = () => {
     joinFleetWorkspace
   } = useCase()
 
-  const [hostIp, setHostIp] = useState('127.0.0.1')
-  const [port, setPort] = useState('4096')
   const [roomKey, setRoomKey] = useState('')
-  const [clientName, setClientName] = useState('Workstation-Node-02')
-  const [storageMedia, setStorageMedia] = useState('512 GB NVMe (Samsung 980 PRO)')
   const [isConnecting, setIsConnecting] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
@@ -43,17 +35,13 @@ export const FleetJoinModal: React.FC = () => {
 
     try {
       const res = await joinFleetWorkspace({
-        hostIp: hostIp.trim(),
-        port: parseInt(port.trim(), 10) || 4096,
-        roomCode: roomKey.trim().toUpperCase(),
-        clientName: clientName.trim(),
-        storage: storageMedia.trim()
+        roomCode: roomKey.trim().toUpperCase()
       })
 
       if (res.success) {
         setIsFleetJoinModalOpen(false)
       } else {
-        setErrorMsg(res.error || 'Failed to authenticate with fleet host. Verify IP and Room Key.')
+        setErrorMsg(res.error || 'Workspace not found. Connect to the same Wi-Fi or Ethernet LAN as the host and verify the room key.')
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Connection error occurred.')
@@ -122,89 +110,14 @@ export const FleetJoinModal: React.FC = () => {
             </div>
           </div>
 
-          {/* Network Host & Port */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2 space-y-1.5">
-              <label className="block text-xs font-bold text-atlas-navy">
-                Host IP / Domain <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-atlas-muted">
-                  <Network className="w-3.5 h-3.5" />
-                </div>
-                <input
-                  type="text"
-                  required
-                  value={hostIp}
-                  onChange={(e) => setHostIp(e.target.value)}
-                  placeholder="127.0.0.1 or 192.168.1.x"
-                  className="w-full pl-9 pr-3 py-2 text-xs font-mono border border-atlas-border rounded-lg focus:border-atlas-forest focus:outline-none bg-atlas-bg"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-atlas-navy">
-                Port
-              </label>
-              <input
-                type="number"
-                required
-                value={port}
-                onChange={(e) => setPort(e.target.value)}
-                placeholder="4096"
-                className="w-full px-3 py-2 text-xs font-mono border border-atlas-border rounded-lg focus:border-atlas-forest focus:outline-none bg-atlas-bg"
-              />
-            </div>
-          </div>
-
-          {/* Workstation Identity */}
-          <div className="grid grid-cols-2 gap-3 pt-1">
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-atlas-navy">
-                Workstation Hostname
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-atlas-muted">
-                  <Laptop className="w-3.5 h-3.5" />
-                </div>
-                <input
-                  type="text"
-                  required
-                  value={clientName}
-                  onChange={(e) => setClientName(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-xs border border-atlas-border rounded-lg focus:border-atlas-forest focus:outline-none bg-atlas-bg font-mono"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-atlas-navy">
-                Target Storage Media
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-atlas-muted">
-                  <HardDrive className="w-3.5 h-3.5" />
-                </div>
-                <input
-                  type="text"
-                  required
-                  value={storageMedia}
-                  onChange={(e) => setStorageMedia(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-xs border border-atlas-border rounded-lg focus:border-atlas-forest focus:outline-none bg-atlas-bg"
-                />
-              </div>
-            </div>
-          </div>
-
           {/* Info pill */}
           <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-800 space-y-1">
             <div className="flex items-center gap-1.5 font-bold">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>Offline Direct WebSocket Protocol</span>
+              <span>Automatic local-network discovery</span>
             </div>
             <p className="text-[11px] text-emerald-700 leading-relaxed">
-              Upon joining, this workstation syncs the workspace configured by the central operator and executes synchronized audit, wipe, or recovery commands in real-time.
+              Enter the room key only. CyberSanitize will find the matching open workspace on this LAN and sync its workspace and assigned options.
             </p>
           </div>
 
@@ -228,7 +141,7 @@ export const FleetJoinModal: React.FC = () => {
               {isConnecting ? (
                 <>
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Connecting to Central Host...</span>
+                  <span>Finding workspace on this LAN...</span>
                 </>
               ) : (
                 <>

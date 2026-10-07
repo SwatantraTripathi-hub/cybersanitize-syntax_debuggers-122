@@ -78,26 +78,30 @@ export interface JobCompletePayload {
   durationMs: number
 }
 
+export interface FleetWorkspaceOptions {
+  wipeStandard: string
+  recoveryTypes: string[]
+  writeBlockerEnforced: boolean
+  preScanEnabled: boolean
+}
+
+export interface FleetWorkspaceMeta {
+  caseId: string
+  title: string
+  evidenceTag: string
+  authorizingOfficer: string
+  date: string
+  notes: string
+  classification: string
+  driveSerial?: string
+  selectedOptions: FleetWorkspaceOptions
+}
+
 export interface RoomAcceptedPayload {
   roomKey: string
   hostVersion: string
   connectedPeers: number
-  workspaceMeta?: {
-    caseId: string
-    title: string
-    evidenceTag: string
-    authorizingOfficer: string
-    date: string
-    notes: string
-    classification: string
-    driveSerial?: string
-    selectedOptions?: {
-      wipeStandard: string
-      recoveryTypes: string[]
-      writeBlockerEnforced: boolean
-      preScanEnabled: boolean
-    }
-  }
+  workspaceMeta?: FleetWorkspaceMeta
 }
 
 export interface BroadcastPayload {

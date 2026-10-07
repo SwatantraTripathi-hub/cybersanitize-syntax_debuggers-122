@@ -14,6 +14,8 @@ import { EventEmitter } from 'node:events'
 import { WebSocketServer, WebSocket } from 'ws'
 import type { IncomingMessage } from 'node:http'
 import type { Server } from 'node:net'
+import type { Socket as DatagramSocket } from 'node:dgram'
+import { startFleetDiscoveryResponder } from './fleetDiscovery'
 import {
   FleetMessageType,
   type FleetPacket,
@@ -21,6 +23,7 @@ import {
   type JoinRoomPayload,
   type TelemetryPayload,
   type PreScanFindingsPayload,
+  type FleetWorkspaceMeta,
   type JobCompletePayload,
   type ExecuteWipePayload,
   type ExecuteRecoveryPayload
@@ -44,27 +47,28 @@ declare interface FleetHost {
 
 class FleetHost extends EventEmitter {
   private wss: WebSocketServer | null = null
+  private discoverySocket: DatagramSocket | null = null
   private nodes: Map<string, ConnectedNode> = new Map()
   private sockets: Map<string, WebSocket> = new Map()
   private activeRoomKey: string = ''
   private port: number = 4096
-  private activeWorkspaceMeta: any = null
+  private activeWorkspaceMeta: FleetWorkspaceMeta | null = null
 
   /**
    * Set active workspace configuration metadata for joining nodes.
    */
-  setWorkspaceMeta(meta: any): void {
+  setWorkspaceMeta(meta: FleetWorkspaceMeta): void {
     this.activeWorkspaceMeta = meta
   }
 
-  getWorkspaceMeta(): any {
+  getWorkspaceMeta(): FleetWorkspaceMeta | null {
     return this.activeWorkspaceMeta
   }
 
   /**
    * Start the WebSocket server and return the room key.
    */
-  createLobby(port = 4096): string {
+  createLobby(port = 4096): Promise<string> {
     if (this.wss) {
       this.closeLobby()
     }
@@ -90,7 +94,35 @@ class FleetHost extends EventEmitter {
       this.emit('host:started', port)
     })
 
-    return this.activeRoomKey
+    return new Promise((resolve, reject) => {
+      const server = this.wss
+      if (!server) {
+        reject(new Error('Fleet host server failed to initialize.'))
+        return
+      }
+
+      const onListening = () => {
+        server.removeListener('error', onStartupError)
+        void startFleetDiscoveryResponder(
+          () => this.activeRoomKey,
+          () => this.port
+        ).then((socket) => {
+          this.discoverySocket = socket
+          resolve(this.activeRoomKey)
+        }).catch((error: Error) => {
+          this.closeLobby()
+          reject(error)
+        })
+      }
+      const onStartupError = (err: Error) => {
+        server.removeListener('listening', onListening)
+        this.wss = null
+        reject(err)
+      }
+
+      server.once('listening', onListening)
+      server.once('error', onStartupError)
+    })
   }
 
   /**
@@ -347,6 +379,11 @@ class FleetHost extends EventEmitter {
    * Shut down the WebSocket server and disconnect all nodes.
    */
   closeLobby(): void {
+    if (this.discoverySocket) {
+      this.discoverySocket.close()
+      this.discoverySocket = null
+    }
+
     if (this.wss) {
       // Close all sockets
       for (const [nodeId, ws] of this.sockets.entries()) {
@@ -374,6 +411,7 @@ class FleetHost extends EventEmitter {
       this.nodes.clear()
       this.sockets.clear()
       this.activeRoomKey = ''
+      this.activeWorkspaceMeta = null
     }
   }
 

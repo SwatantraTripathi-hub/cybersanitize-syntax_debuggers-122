@@ -29,6 +29,12 @@ export const FleetCreateModal: React.FC = () => {
   const [targetEstimate, setTargetEstimate] = useState('10 Workstations')
   const [generatedKey, setGeneratedKey] = useState('')
   const [copiedKey, setCopiedKey] = useState(false)
+  const [wipeStandard, setWipeStandard] = useState('nist-clear')
+  const [recoveryTypes, setRecoveryTypes] = useState<string[]>(['DOCX', 'PDF', 'SQLITE'])
+  const [preScanEnabled, setPreScanEnabled] = useState(true)
+  const [writeBlockerEnforced, setWriteBlockerEnforced] = useState(true)
+  const [isCreating, setIsCreating] = useState(false)
+  const [creationError, setCreationError] = useState<string | null>(null)
 
   // Administrator registration details (matching the single-device setup)
   const [adminName, setAdminName] = useState(operator.name)
@@ -39,12 +45,36 @@ export const FleetCreateModal: React.FC = () => {
 
   if (!isFleetCreateModalOpen) return null
 
-  const handleGenerateKey = (e: React.FormEvent) => {
+  const handleGenerateKey = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!workspaceName.trim()) return
-    const key = createFleetWorkspace(workspaceName.trim())
-    setGeneratedKey(key)
-    setStep('key-generated')
+    if (!workspaceName.trim() || isCreating) return
+    if (recoveryTypes.length === 0) {
+      setCreationError('Select at least one recovery file type for this workspace.')
+      return
+    }
+
+    setCreationError(null)
+    setIsCreating(true)
+    try {
+      const key = await createFleetWorkspace(workspaceName.trim(), {
+        wipeStandard,
+        recoveryTypes,
+        preScanEnabled,
+        writeBlockerEnforced
+      })
+      setGeneratedKey(key)
+      setStep('key-generated')
+    } catch (err: any) {
+      setCreationError(err?.message || 'Could not create the fleet workspace.')
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  const toggleRecoveryType = (type: string) => {
+    setRecoveryTypes(current => current.includes(type)
+      ? current.filter(item => item !== type)
+      : [...current, type])
   }
 
   const handleCopyKey = () => {
@@ -112,6 +142,11 @@ export const FleetCreateModal: React.FC = () => {
           {/* STEP 1: Enter Workspace Name */}
           {step === 'name' && (
             <form onSubmit={handleGenerateKey} className="space-y-4">
+              {creationError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700" role="alert">
+                  {creationError}
+                </div>
+              )}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-atlas-navy">
                   Fleet Workspace Name <span className="text-red-500">*</span>
@@ -145,6 +180,51 @@ export const FleetCreateModal: React.FC = () => {
                 </select>
               </div>
 
+              <fieldset className="space-y-2 border-t border-atlas-border pt-3">
+                <legend className="text-xs font-bold text-atlas-navy">Assigned workstation policy</legend>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="space-y-1 text-[11px] font-semibold text-atlas-muted">
+                    <span className="block">Sanitization standard</span>
+                    <select
+                      value={wipeStandard}
+                      onChange={(event) => setWipeStandard(event.target.value)}
+                      className="w-full px-3 py-2 text-xs border border-atlas-border rounded-lg bg-atlas-bg text-atlas-text"
+                    >
+                      <option value="nist-clear">NIST SP 800-88 Clear</option>
+                      <option value="nist-purge">NIST SP 800-88 Purge</option>
+                      <option value="nvme-crypto">NVMe Cryptographic Erase</option>
+                      <option value="dod-3">DoD 5220.22-M (3-pass)</option>
+                    </select>
+                  </label>
+                  <div className="space-y-1">
+                    <span className="block text-[11px] font-semibold text-atlas-muted">Recovery file types</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {['DOCX', 'PDF', 'SQLITE', 'JPEG', 'PNG'].map(type => (
+                        <button
+                          key={type}
+                          type="button"
+                          aria-pressed={recoveryTypes.includes(type)}
+                          onClick={() => toggleRecoveryType(type)}
+                          className={`px-2 py-1 rounded border text-[10px] font-bold ${recoveryTypes.includes(type) ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-white border-atlas-border text-atlas-muted'}`}
+                        >
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-x-5 gap-y-2 pt-1 text-[11px] text-atlas-text">
+                  <label className="inline-flex items-center gap-2">
+                    <input type="checkbox" checked={preScanEnabled} onChange={event => setPreScanEnabled(event.target.checked)} />
+                    Require pre-sanitization scan
+                  </label>
+                  <label className="inline-flex items-center gap-2">
+                    <input type="checkbox" checked={writeBlockerEnforced} onChange={event => setWriteBlockerEnforced(event.target.checked)} />
+                    Enforce forensic write blocker
+                  </label>
+                </div>
+              </fieldset>
+
               <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-800 flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>Devices pair over local network using an ephemeral room key.</span>
@@ -160,9 +240,10 @@ export const FleetCreateModal: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="atlas-btn-primary px-5 py-2 text-xs font-bold flex items-center gap-1.5"
+                  disabled={isCreating}
+                  className="atlas-btn-primary px-5 py-2 text-xs font-bold flex items-center gap-1.5 disabled:opacity-60"
                 >
-                  <span>Generate Workspace Key</span>
+                  <span>{isCreating ? 'Starting Fleet Host…' : 'Generate Workspace Key'}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -200,8 +281,8 @@ export const FleetCreateModal: React.FC = () => {
               <div className="bg-atlas-bg border border-atlas-border rounded-lg p-3 text-left text-xs text-atlas-muted space-y-1">
                 <strong className="text-atlas-navy block">How connected devices join:</strong>
                 <ol className="list-decimal pl-4 space-y-0.5 text-[11px]">
-                  <li>Connect target laptops to the same local Ethernet switch or offline Wi-Fi.</li>
-                  <li>Launch CyberSanitize in Client Node mode on each target laptop.</li>
+                  <li>Connect target laptops to the same local Ethernet switch or Wi-Fi.</li>
+                  <li>On each client, enter the room key only. The host is discovered automatically on the LAN.</li>
                   <li>Enter the key <strong>{generatedKey}</strong> to authenticate.</li>
                 </ol>
               </div>

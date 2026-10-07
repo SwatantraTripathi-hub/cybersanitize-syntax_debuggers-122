@@ -28,6 +28,7 @@ export const Dashboard: React.FC = () => {
     exportCase, 
     selectedFleetNode, 
     isJoinedClientNode,
+    isWebSocketConnected,
     joinedWorkspaceMeta,
     backToFleetOverview 
   } = useCase()
@@ -40,6 +41,20 @@ export const Dashboard: React.FC = () => {
   })
   const [recentLogs, setRecentLogs] = useState<any[]>([])
   const [viewScope, setViewScope] = useState<'case' | 'all'>('case')
+  const assignedOptions = {
+    wipeStandard: 'nist-clear',
+    recoveryTypes: ['DOCX', 'PDF', 'SQLITE'],
+    writeBlockerEnforced: true,
+    preScanEnabled: true,
+    ...(joinedWorkspaceMeta?.selectedOptions ?? {})
+  }
+  const standardNames: Record<string, string> = {
+    'nist-clear': 'NIST SP 800-88 Clear',
+    'nist-purge': 'NIST SP 800-88 Purge',
+    'nvme-crypto': 'NVMe Cryptographic Erase',
+    'dod-3': 'DoD 5220.22-M (3-pass)',
+    'dod-7': 'DoD 5220.22-M (7-pass)'
+  }
 
   useEffect(() => {
     setRecentLogs([
@@ -72,7 +87,7 @@ export const Dashboard: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto space-y-4">
       {/* Fleet Node Context Banner (if viewing specific node in fleet mode) */}
-      {selectedFleetNode && (
+      {selectedFleetNode && !isJoinedClientNode && (
         <div className="bg-emerald-50 border border-emerald-300 rounded-xl px-4 py-2.5 flex items-center justify-between shadow-xs">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-xs">
@@ -122,8 +137,10 @@ export const Dashboard: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2 text-xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
-              <span className="font-mono text-[11px] text-emerald-700 font-semibold">Mesh Link Active (ws://127.0.0.1:4096)</span>
+              <span className={`w-2 h-2 rounded-full ${isWebSocketConnected ? 'bg-emerald-600 animate-pulse' : 'bg-red-500'}`}></span>
+              <span className={`font-mono text-[11px] font-semibold ${isWebSocketConnected ? 'text-emerald-700' : 'text-red-700'}`}>
+                {isWebSocketConnected ? 'Coordinator link active' : 'Coordinator disconnected'} · {activeCase.fleetKey}
+              </span>
             </div>
           </div>
 
@@ -134,9 +151,9 @@ export const Dashboard: React.FC = () => {
               </span>
               <div className="font-bold text-atlas-navy flex items-center gap-1.5">
                 <Flame className="w-3.5 h-3.5 text-amber-600" />
-                <span>NIST SP 800-88 Clear</span>
+                <span>{standardNames[assignedOptions.wipeStandard] || assignedOptions.wipeStandard}</span>
               </div>
-              <span className="text-[10px] text-atlas-muted block">Single-Pass 0x00 Zero Overwrite</span>
+              <span className="text-[10px] text-atlas-muted block">Assigned by the central workspace coordinator</span>
             </div>
 
             <div className="p-3 rounded-lg bg-atlas-bg border border-atlas-border space-y-1">
@@ -156,9 +173,9 @@ export const Dashboard: React.FC = () => {
               </span>
               <div className="font-bold text-atlas-navy flex items-center gap-1.5">
                 <Search className="w-3.5 h-3.5 text-indigo-600" />
-                <span>DOCX, PDF, SQLITE</span>
+                <span>{assignedOptions.recoveryTypes?.length ? assignedOptions.recoveryTypes.join(', ') : 'No recovery types assigned'}</span>
               </div>
-              <span className="text-[10px] text-atlas-muted block">Header/Footer Raw Carving</span>
+              <span className="text-[10px] text-atlas-muted block">Assigned recovery signature types</span>
             </div>
 
             <div className="p-3 rounded-lg bg-atlas-bg border border-atlas-border space-y-1">
@@ -167,10 +184,16 @@ export const Dashboard: React.FC = () => {
               </span>
               <div className="font-bold text-emerald-800 flex items-center gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                <span>ISO 27037 Enforced</span>
+                <span>{assignedOptions.writeBlockerEnforced ? 'ISO 27037 Enforced' : 'Not required by coordinator'}</span>
               </div>
-              <span className="text-[10px] text-atlas-muted block">Kernel Read-Only Volume Lock</span>
+              <span className="text-[10px] text-atlas-muted block">{assignedOptions.writeBlockerEnforced ? 'Kernel Read-Only Volume Lock' : 'Write-blocker policy is disabled'}</span>
             </div>
+          </div>
+
+          <div className="flex items-center gap-2 rounded-lg bg-atlas-bg border border-atlas-border px-3 py-2 text-[11px]">
+            <CheckCircle2 className={`w-3.5 h-3.5 ${assignedOptions.preScanEnabled ? 'text-emerald-600' : 'text-atlas-muted'}`} />
+            <span className="font-semibold text-atlas-navy">Pre-sanitization scan:</span>
+            <span className="text-atlas-muted">{assignedOptions.preScanEnabled ? 'Enabled by central coordinator' : 'Not enabled for this workspace'}</span>
           </div>
 
           <div className="pt-2 flex flex-wrap items-center justify-between gap-3">

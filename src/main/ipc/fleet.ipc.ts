@@ -1,6 +1,7 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { FleetHost } from '../fleet/fleetHost'
 import { FleetClient } from '../fleet/fleetClient'
+import { discoverFleetHost } from '../fleet/fleetDiscovery'
 
 let fleetHostInstance: FleetHost | null = null
 let fleetClientInstance: FleetClient | null = null
@@ -46,7 +47,7 @@ export function registerFleetIpc(mainWindow: BrowserWindow): void {
         }
       })
 
-      const roomCode = fleetHostInstance.createLobby(port)
+      const roomCode = await fleetHostInstance.createLobby(port)
       return { success: true, roomCode, port }
     } catch (err: any) {
       console.error('[FleetIPC] Error creating lobby:', err)
@@ -64,12 +65,14 @@ export function registerFleetIpc(mainWindow: BrowserWindow): void {
   })
 
   // 2. Join Lobby as a Client Node
-  ipcMain.handle('fleet:join-lobby', async (_, { hostIp, roomCode, nodeId, port = 4096, nodeDetails }) => {
+  ipcMain.handle('fleet:join-lobby', async (_, { roomCode, nodeId }) => {
     try {
       if (fleetClientInstance) {
         fleetClientInstance.disconnect()
       }
       fleetClientInstance = new FleetClient()
+
+      const endpoint = await discoverFleetHost(roomCode)
 
       // Forward client received events to renderer
       fleetClientInstance.on('command_received', (type) => {
@@ -77,8 +80,13 @@ export function registerFleetIpc(mainWindow: BrowserWindow): void {
           mainWindow.webContents.send('fleet:client-command', type)
         }
       })
+      fleetClientInstance.on('disconnected', () => {
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('fleet:client-disconnected')
+        }
+      })
 
-      const result = await fleetClientInstance.joinLobby(hostIp, port, roomCode, nodeId, nodeDetails)
+      const result = await fleetClientInstance.joinLobby(endpoint.hostIp, endpoint.port, roomCode, nodeId)
       return result
     } catch (err: any) {
       console.error('[FleetIPC] Error joining lobby:', err)
@@ -118,6 +126,14 @@ export function registerFleetIpc(mainWindow: BrowserWindow): void {
     if (fleetHostInstance) {
       fleetHostInstance.closeLobby()
     }
+    if (fleetClientInstance) {
+      fleetClientInstance.disconnect()
+      fleetClientInstance = null
+    }
+    return { success: true }
+  })
+
+  ipcMain.handle('fleet:leave-client', async () => {
     if (fleetClientInstance) {
       fleetClientInstance.disconnect()
       fleetClientInstance = null
