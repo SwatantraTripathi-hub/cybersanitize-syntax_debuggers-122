@@ -1,10 +1,26 @@
-appId: com.cybersanitize.app
+appId: com.cybersanitize.forensic-tool
 productName: CyberSanitize
 directories:
-  output: release
+  output: dist
 files:
-  - out/**
-  - package.json
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.*'
+  - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md,documentation.md}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+asar: true
+asarUnpack:
+  - '**/*.node'
 win:
-  target: nsis
-  signAndEditExecutable: false
+  executableName: CyberSanitize
+  requestedExecutionLevel: requireAdministrator
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: CyberSanitize
