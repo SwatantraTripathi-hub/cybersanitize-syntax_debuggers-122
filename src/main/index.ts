@@ -1,6 +1,8 @@
 import { app, BrowserWindow, shell } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
+import { registerAllIpc } from './ipc'
+import { VerificationServer } from './services/verificationServer'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -26,6 +28,9 @@ function createWindow(): void {
     }
   })
 
+  // Register all IPC handlers
+  registerAllIpc(mainWindow)
+
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
   })
@@ -50,6 +55,9 @@ function createWindow(): void {
 import { registerFleetIpc } from './ipc/fleet.ipc'
 
 app.whenReady().then(() => {
+  // Start local sovereign verification authority
+  VerificationServer.getInstance().start(3847).catch(console.error)
+
   createWindow()
   if (mainWindow) {
     registerFleetIpc(mainWindow)
@@ -61,7 +69,9 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  VerificationServer.getInstance().stop()
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
+

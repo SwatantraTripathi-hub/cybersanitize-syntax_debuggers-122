@@ -231,7 +231,8 @@ export const Recovery: React.FC = () => {
           size: selectedDrive?.size || 1073741824,
           caseMeta: {
             caseId: activeCase.caseId,
-            operatorId: operator.operatorId
+            operatorId: operator.operatorId,
+            role: operator.role
           }
         })
         if (res.success && res.filesFound) {
@@ -242,12 +243,18 @@ export const Recovery: React.FC = () => {
           drawHeatmap(100, true)
         }
         return
-      } catch (e) {
-        console.warn('Recovery fallback to simulation:', e)
+      } catch (e: any) {
+        const msg = String(e?.message || e)
+        console.warn('Recovery call failed:', e)
+        const deny = msg.includes('SecurityError') || msg.includes('UNKNOWN_OPERATOR') || msg.includes('not registered') || msg.includes('denied') || msg.includes('forbidden') || msg.includes('Permission') || msg.includes('EVIDENCE_CREATE')
+        if (deny) {
+          setStatus('error')
+          return
+        }
       }
     }
-
-    runSimulatedRecovery()
+    setStatus('error')
+    return
   }
 
   const runSimulatedRecovery = () => {

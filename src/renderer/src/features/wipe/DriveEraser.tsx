@@ -148,7 +148,8 @@ export const DriveEraser: React.FC = () => {
           caseMeta: {
             caseId: activeCase.caseId,
             operatorId: operator.operatorId,
-            evidenceTag: activeCase.evidenceTag
+            evidenceTag: activeCase.evidenceTag,
+            role: operator.role
           }
         })
         if (res.success) {
@@ -159,13 +160,18 @@ export const DriveEraser: React.FC = () => {
           setStatus('error')
         }
         return
-      } catch (e) {
-        console.warn('Real wipe invocation failed, using simulation:', e)
+      } catch (e: any) {
+        const msg = String(e?.message || e)
+        console.warn('Real wipe invocation failed:', e)
+        const deny = msg.includes('SecurityError') || msg.includes('UNKNOWN_OPERATOR') || msg.includes('not registered') || msg.includes('denied') || msg.includes('forbidden') || msg.includes('EVIDENCE_CREATE') || msg.includes('DESTRUCTIVE_WIPE') || msg.includes('Permission')
+        if (deny) {
+          setStatus('error')
+          return
+        }
       }
     }
-
-    // Fallback simulation
-    runSimulatedWipe()
+    setStatus('error')
+    return
   }
 
   const runSimulatedWipe = () => {

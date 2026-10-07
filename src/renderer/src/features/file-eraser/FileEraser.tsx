@@ -106,7 +106,8 @@ export const FileEraser: React.FC = () => {
           standard,
           caseMeta: {
             caseId: activeCase.caseId,
-            operatorId: operator.operatorId
+            operatorId: operator.operatorId,
+            role: operator.role
           }
         })
         if (res.success) {
@@ -120,12 +121,18 @@ export const FileEraser: React.FC = () => {
           })
         }
         return
-      } catch (e) {
-        console.warn('Real shred invocation error, falling back to simulation:', e)
+      } catch (e: any) {
+        const msg = String(e?.message || e)
+        console.warn('Real shred invocation error:', e)
+        const deny = msg.includes('SecurityError') || msg.includes('UNKNOWN_OPERATOR') || msg.includes('not registered') || msg.includes('denied') || msg.includes('forbidden') || msg.includes('Permission') || msg.includes('FILE_ERASE') || msg.includes('DESTRUCTIVE')
+        if (deny) {
+          setStatus('error')
+          return
+        }
       }
     }
-
-    runSimulatedShred()
+    setStatus('error')
+    return
   }
 
   const runSimulatedShred = () => {
