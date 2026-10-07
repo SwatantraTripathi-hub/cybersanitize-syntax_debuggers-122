@@ -46,6 +46,19 @@ declare global {
       verifyReportFile?: (pdfPath?: string) => Promise<any>
       verifyAirGapPayload?: (payload: string) => Promise<any>
       getQrDataUrl?: (text: string, options?: any) => Promise<string>
+      createLobby?: (port?: number) => Promise<{ success: boolean; roomCode?: string; port?: number; error?: string }>
+      joinLobby?: (params: { hostIp: string; roomCode: string; nodeId: string; port?: number }) => Promise<{ success: boolean; error?: string }>
+      broadcastPreScan?: (nodeIds?: string[]) => Promise<{ success: boolean; error?: string }>
+      broadcastWipe?: (standard: string, nodeIds?: string[]) => Promise<{ success: boolean; error?: string }>
+      broadcastRecovery?: (fileTypes: string[], nodeIds?: string[]) => Promise<{ success: boolean; error?: string }>
+      closeLobby?: () => Promise<{ success: boolean }>
+      getFleetNodes?: () => Promise<any[]>
+      getFleetStatus?: () => Promise<any>
+      onFleetNodeJoined?: (callback: (node: any) => void) => () => void
+      onFleetNodePreScan?: (callback: (node: any) => void) => () => void
+      onFleetTelemetry?: (callback: (data: any) => void) => () => void
+      onFleetNodeComplete?: (callback: (data: any) => void) => () => void
+      onFleetNodeDisconnected?: (callback: (nodeId: string) => void) => () => void
     }
   }
 }

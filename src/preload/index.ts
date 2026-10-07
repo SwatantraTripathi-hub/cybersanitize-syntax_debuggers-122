@@ -95,7 +95,45 @@ const api = {
 
   // Utility
   createTestImage: (sizeMB: number) => ipcRenderer.invoke('wipe:create-test-image', sizeMB),
-  getAppVersion: () => ipcRenderer.invoke('app:get-version')
+  getAppVersion: () => ipcRenderer.invoke('app:get-version'),
+
+  // Fleet Orchestration
+  createLobby: (port?: number) => ipcRenderer.invoke('fleet:create-lobby', port),
+  joinLobby: (params: { hostIp: string; roomCode: string; nodeId: string; port?: number }) =>
+    ipcRenderer.invoke('fleet:join-lobby', params),
+  broadcastPreScan: (nodeIds?: string[]) => ipcRenderer.invoke('fleet:broadcast-prescan', nodeIds),
+  broadcastWipe: (standard: string, nodeIds?: string[]) =>
+    ipcRenderer.invoke('fleet:broadcast-wipe', standard, nodeIds),
+  broadcastRecovery: (fileTypes: string[], nodeIds?: string[]) =>
+    ipcRenderer.invoke('fleet:broadcast-recovery', fileTypes, nodeIds),
+  closeLobby: () => ipcRenderer.invoke('fleet:close-lobby'),
+  getFleetNodes: () => ipcRenderer.invoke('fleet:get-nodes'),
+  getFleetStatus: () => ipcRenderer.invoke('fleet:get-status'),
+  onFleetNodeJoined: (callback: (node: any) => void) => {
+    const listener = (_event: any, node: any) => callback(node)
+    ipcRenderer.on('fleet:node-joined', listener)
+    return () => ipcRenderer.removeListener('fleet:node-joined', listener)
+  },
+  onFleetNodePreScan: (callback: (node: any) => void) => {
+    const listener = (_event: any, node: any) => callback(node)
+    ipcRenderer.on('fleet:node-prescan', listener)
+    return () => ipcRenderer.removeListener('fleet:node-prescan', listener)
+  },
+  onFleetTelemetry: (callback: (data: any) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on('fleet:telemetry', listener)
+    return () => ipcRenderer.removeListener('fleet:telemetry', listener)
+  },
+  onFleetNodeComplete: (callback: (data: any) => void) => {
+    const listener = (_event: any, data: any) => callback(data)
+    ipcRenderer.on('fleet:node-complete', listener)
+    return () => ipcRenderer.removeListener('fleet:node-complete', listener)
+  },
+  onFleetNodeDisconnected: (callback: (nodeId: string) => void) => {
+    const listener = (_event: any, nodeId: string) => callback(nodeId)
+    ipcRenderer.on('fleet:node-disconnected', listener)
+    return () => ipcRenderer.removeListener('fleet:node-disconnected', listener)
+  }
 }
 
 // Expose the API to the renderer process

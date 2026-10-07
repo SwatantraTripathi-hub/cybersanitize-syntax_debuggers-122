@@ -433,6 +433,121 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (_) {}
   }, [activeCase]);
 
+  // Real-time Fleet WebSocket listeners
+  useEffect(() => {
+    if (!window.api) return;
+
+    const unsubs: Array<(() => void) | void> = [];
+
+    if (window.api.onFleetNodeJoined) {
+      unsubs.push(
+        window.api.onFleetNodeJoined((realNode: any) => {
+          setConnectedNodes(prev => {
+            const exists = prev.some(n => n.id === realNode.nodeId);
+            if (exists) {
+              return prev.map(n => n.id === realNode.nodeId ? {
+                ...n,
+                hostname: realNode.hostname,
+                ip: realNode.ip,
+                status: 'ONLINE',
+                lastLog: realNode.lastLog || n.lastLog
+              } : n);
+            }
+            const newNode: FleetNode = {
+              id: realNode.nodeId,
+              hostname: realNode.hostname,
+              ip: realNode.ip,
+              mac: realNode.mac || '00:00:00:00:00:00',
+              model: realNode.model || 'Remote Client Workstation',
+              storage: realNode.storage || 'Internal NVMe',
+              status: 'ONLINE',
+              progress: 0,
+              speed: '0 MB/s',
+              eta: '--',
+              selected: true,
+              lastLog: realNode.lastLog || 'Connected to local LAN WebSocket mesh.'
+            };
+            return [...prev, newNode];
+          });
+        })
+      );
+    }
+
+    if (window.api.onFleetNodePreScan) {
+      unsubs.push(
+        window.api.onFleetNodePreScan((realNode: any) => {
+          setConnectedNodes(prev => prev.map(n => {
+            if (n.id === realNode.nodeId) {
+              return {
+                ...n,
+                status: 'IDLE',
+                progress: 100,
+                speed: '0 MB/s',
+                eta: 'Done',
+                preScanFindings: realNode.preScanFindings,
+                lastLog: realNode.lastLog || 'Pre-Scan Complete: Findings synchronized.'
+              };
+            }
+            return n;
+          }));
+        })
+      );
+    }
+
+    if (window.api.onFleetTelemetry) {
+      unsubs.push(
+        window.api.onFleetTelemetry((data: { nodeId: string; telemetry: any }) => {
+          setConnectedNodes(prev => prev.map(n => {
+            if (n.id === data.nodeId) {
+              return {
+                ...n,
+                status: (data.telemetry.phase as any) || n.status,
+                progress: data.telemetry.progress,
+                speed: data.telemetry.speed,
+                eta: data.telemetry.eta,
+                lastLog: data.telemetry.logLine
+              };
+            }
+            return n;
+          }));
+        })
+      );
+    }
+
+    if (window.api.onFleetNodeComplete) {
+      unsubs.push(
+        window.api.onFleetNodeComplete((data: { nodeId: string; result: any }) => {
+          setConnectedNodes(prev => prev.map(n => {
+            if (n.id === data.nodeId) {
+              const isWipe = data.result.operation === 'WIPE';
+              return {
+                ...n,
+                status: isWipe ? 'VERIFIED' : 'IDLE',
+                progress: 100,
+                speed: '0 MB/s',
+                eta: 'Completed',
+                lastLog: data.result.summary
+              };
+            }
+            return n;
+          }));
+        })
+      );
+    }
+
+    if (window.api.onFleetNodeDisconnected) {
+      unsubs.push(
+        window.api.onFleetNodeDisconnected((nodeId: string) => {
+          setConnectedNodes(prev => prev.filter(n => n.id !== nodeId));
+        })
+      );
+    }
+
+    return () => {
+      unsubs.forEach(u => typeof u === 'function' && u());
+    };
+  }, []);
+
   const updateOperator = (op: OperatorProfile) => {
     setOperator(op);
   };
@@ -539,6 +654,15 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setFleetKey(generatedKey);
     setFleetWorkspaceName(name);
 
+    // Start real fleet WebSocket host server via IPC
+    if (window.api?.createLobby) {
+      window.api.createLobby(4096).then((res) => {
+        if (res?.roomCode) {
+          setFleetKey(res.roomCode);
+        }
+      }).catch((e) => console.warn('[CaseContext] createLobby error:', e));
+    }
+
     // Create a matching fleet workspace record
     const fleetCaseRecord: CaseRecord = {
       caseId: `FLEET-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -567,6 +691,12 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const dispatchBatchPreScan = () => {
+    // Dispatch real IPC broadcast to connected fleet nodes
+    if (window.api?.broadcastPreScan) {
+      const selectedIds = connectedNodes.filter(n => n.selected).map(n => n.id);
+      window.api.broadcastPreScan(selectedIds.length > 0 ? selectedIds : undefined).catch(console.warn);
+    }
+
     setConnectedNodes(prev => prev.map(node => {
       if (!node.selected) return node;
       return {
@@ -603,6 +733,12 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const dispatchBatchWipe = (standard = 'nist-clear') => {
+    // Dispatch real IPC broadcast to connected fleet nodes
+    if (window.api?.broadcastWipe) {
+      const selectedIds = connectedNodes.filter(n => n.selected).map(n => n.id);
+      window.api.broadcastWipe(standard, selectedIds.length > 0 ? selectedIds : undefined).catch(console.warn);
+    }
+
     setConnectedNodes(prev => prev.map(node => {
       if (!node.selected) return node;
       return {
@@ -638,6 +774,12 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const dispatchBatchRecovery = (types = ['DOCX', 'PDF', 'SQLITE']) => {
+    // Dispatch real IPC broadcast to connected fleet nodes
+    if (window.api?.broadcastRecovery) {
+      const selectedIds = connectedNodes.filter(n => n.selected).map(n => n.id);
+      window.api.broadcastRecovery(types, selectedIds.length > 0 ? selectedIds : undefined).catch(console.warn);
+    }
+
     setConnectedNodes(prev => prev.map(node => {
       if (!node.selected) return node;
       return {
