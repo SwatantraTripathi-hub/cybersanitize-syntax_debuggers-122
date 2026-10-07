@@ -1,5 +1,9 @@
 {
-  "extends": "../../tsconfig.json",
-  "compilerOptions": { "composite": true, "outDir": "../../out/main" },
-  "include": ["./**/*.ts"]
+  "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
+  "include": ["**/*.ts"],
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "../../out/main",
+    "types": ["node"]
+  }
 }
