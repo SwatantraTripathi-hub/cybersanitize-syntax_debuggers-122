@@ -1,5 +1,5 @@
 {
   "extends": "../../tsconfig.json",
-  "compilerOptions": { "composite": true, "outDir": "../../dist-electron/main" },
+  "compilerOptions": { "composite": true, "outDir": "../../out/main" },
   "include": ["./**/*.ts"]
 }

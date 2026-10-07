@@ -3,7 +3,8 @@ productName: CyberSanitize
 directories:
   output: release
 files:
-  - dist-electron/**
+  - out/**
   - package.json
 win:
   target: nsis
+  signAndEditExecutable: false

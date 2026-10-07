@@ -1,8 +1,9 @@
 node_modules/
 dist/
-dist-electron/
+out/
 release/
 *.db
 *.db-shm
 *.db-wal
+*status
 *action/
