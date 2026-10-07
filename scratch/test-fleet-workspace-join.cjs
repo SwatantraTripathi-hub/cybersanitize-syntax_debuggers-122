@@ -40,7 +40,12 @@ async function run() {
 
   let nodeJoinedResolve
   const nodeJoined = new Promise(resolve => { nodeJoinedResolve = resolve })
+  let nodeDisconnectedResolve
+  const nodeDisconnected = new Promise(resolve => { nodeDisconnectedResolve = resolve })
   host.on('node:joined', nodeJoinedResolve)
+  host.on('node:disconnected', nodeId => {
+    if (nodeId === 'join-test-node') nodeDisconnectedResolve(nodeId)
+  })
 
   try {
     const roomKey = await host.createLobby(port)
@@ -48,6 +53,7 @@ async function run() {
 
     const endpoint = await discoverFleetHost(roomKey, 2500, false)
     assert.equal(endpoint.port, port, 'LAN discovery should return the host WebSocket port')
+    assert.notEqual(endpoint.hostIp, '127.0.0.1', 'discovery should find the host through a LAN interface')
 
     const result = await client.joinLobby(endpoint.hostIp, endpoint.port, roomKey, 'join-test-node', {
       hostname: 'JOIN-TEST-LAPTOP',
@@ -71,12 +77,20 @@ async function run() {
     )
     await assert.rejects(discoverFleetHost('CS-FLEET-NOT-OPEN', 400), /No workspace with that key/)
 
+    client.disconnect()
+    await Promise.race([
+      nodeDisconnected,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('host did not remove disconnected node')), 3000))
+    ])
+    assert.equal(host.getConnectedNodes().some(node => node.nodeId === 'join-test-node'), false)
+
     console.log('PASS: room key discovered the coordinator automatically over LAN broadcast')
     console.log('PASS: client authenticated with the host room key')
     console.log('PASS: central workspace metadata and selected options were synchronized')
     console.log('PASS: host registered the joining workstation')
     console.log('PASS: invalid room key was rejected')
     console.log('PASS: undiscovered key returned the same-LAN guidance error')
+    console.log('PASS: host removed the node after client disconnect')
   } finally {
     client.disconnect()
     unauthorizedClient.disconnect()
