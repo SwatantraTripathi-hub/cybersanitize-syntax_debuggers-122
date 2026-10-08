@@ -26,11 +26,12 @@ export interface DriveInfo {
   mediaType: string;
   size: number;
   sizeFormatted: string;
+  formattedSize: string;
   isRemovable: boolean;
   isBoot: boolean;
   operationalStatus: string;
   partitionStyle: string;
-  path?: string;
+  path: string;
   driveLetter?: string;
   fileSystem?: string;
   label?: string;
@@ -162,13 +163,18 @@ try {
         const isUsbBus = d.BusType === 'USB';
         const isBootDisk = d.IsBoot === true || d.IsSystem === true;
 
+        // Only include partitions that have a drive letter (visible in File Explorer)
+        const visiblePartsRaw = diskPartsRaw.filter(
+          (p: any) => p && p.DriveLetter && String(p.DriveLetter).trim().length > 0
+        );
+
         const diskPartitionInfos: PartitionInfo[] = [];
 
-        for (const p of diskPartsRaw) {
-          const letter = p.DriveLetter ? String(p.DriveLetter).trim().toUpperCase() : undefined;
+        for (const p of visiblePartsRaw) {
+          const letter = String(p.DriveLetter).trim().toUpperCase();
           const matchingVol = volumes.find((v: any) => {
             if (!v) return false;
-            if (letter && v.DriveLetter && String(v.DriveLetter).trim().toUpperCase() === letter) {
+            if (v.DriveLetter && String(v.DriveLetter).trim().toUpperCase() === letter) {
               return true;
             }
             if (p.Guid && v.Path && v.Path.includes(p.Guid)) {
@@ -182,7 +188,7 @@ try {
           const partSize = Number(p.Size) || Number(matchingVol?.Size) || 0;
           const fsType = matchingVol?.FileSystemType || p.Type || 'RAW';
           const label = matchingVol?.FileSystemLabel || '';
-          const partPath = letter ? `\\\\.\\${letter}:` : `\\\\.\\PhysicalDrive${d.Number}`;
+          const partPath = `\\\\.\\${letter}:`;
 
           diskPartitionInfos.push({
             diskNumber: d.Number,
@@ -205,27 +211,23 @@ try {
         const isRemovable = isUsbBus || hasRemovablePart;
         const letters = diskPartitionInfos.filter((p) => !!p.driveLetter).map((p) => p.driveLetter as string);
 
-        const lettersBadge = letters.length > 0 ? `[${letters.join(':, ')}:] ` : '';
-        const partSummary =
-          diskPartitionInfos.length > 0
-            ? ` (${diskPartitionInfos.length} ${
-                diskPartitionInfos.length === 1 ? 'Partition' : 'Partitions'
-              }: ${letters.map((l) => `[${l}:]`).join(', ') || 'Raw'})`
-            : '';
+        const lettersBadge = letters.length > 0 ? `[${letters.map((l) => `${l}:`).join(', ')}] ` : '';
+        const parentFormattedSize = this.formatBytes(Number(d.Size) || 0);
 
-        // Physical drive
+        // Physical drive (Internal or External)
         const parentDriveInfo: DriveInfo = {
           number: d.Number,
-          friendlyName: `${lettersBadge}${d.FriendlyName || 'Storage Device'}${partSummary}`,
+          friendlyName: `${lettersBadge}${d.FriendlyName || (isRemovable ? 'External USB Storage' : 'Internal Disk Drive')} (${parentFormattedSize})`,
           busType: d.BusType || (isRemovable ? 'USB' : 'Internal'),
           mediaType:
             d.BusType === 'NVMe'
               ? 'NVMe SSD'
               : isRemovable
                 ? 'Removable USB Flash Drive'
-                : 'Fixed Physical Disk',
+                : 'Fixed Internal Disk',
           size: Number(d.Size) || 0,
-          sizeFormatted: this.formatBytes(Number(d.Size) || 0),
+          sizeFormatted: parentFormattedSize,
+          formattedSize: parentFormattedSize,
           isRemovable,
           isBoot: isBootDisk,
           operationalStatus: d.OperationalStatus || 'Online',
@@ -240,21 +242,25 @@ try {
           partitions: diskPartitionInfos
         };
 
-        driveResults.push(parentDriveInfo);
+        // Only show parent physical drive if it has NO visible partitions (e.g. unpartitioned / raw media)
+        if (diskPartitionInfos.length === 0) {
+          driveResults.push(parentDriveInfo);
+        }
 
-        // Partition entries
+        // Partition entries (only partitions that appear in File Explorer)
         for (const p of diskPartitionInfos) {
-          const letterPrefix = p.driveLetter ? `[${p.driveLetter}:] ` : '';
-          const labelSuffix = p.label ? ` "${p.label}"` : '';
-          const partName = `${letterPrefix}Partition ${p.partitionNumber}${labelSuffix} — ${p.parentDeviceName} (${p.formattedSize}, ${p.fileSystem})`;
+          const displayName = p.label ? p.label : (p.parentDeviceName || (p.isRemovable ? 'USB Drive' : 'Local Disk'));
+          const fsSuffix = p.fileSystem ? `, ${p.fileSystem}` : '';
+          const partName = `[${p.driveLetter}:] ${displayName} (${p.formattedSize}${fsSuffix})`;
 
           driveResults.push({
             number: 1000 + d.Number * 10 + p.partitionNumber,
             friendlyName: partName,
             busType: d.BusType || (p.isRemovable ? 'USB' : 'Internal'),
-            mediaType: p.isRemovable ? 'USB Pen Drive Partition' : 'Fixed Disk Partition',
+            mediaType: p.isRemovable ? 'Removable USB Partition' : 'Fixed Internal Partition',
             size: p.size,
             sizeFormatted: p.formattedSize,
+            formattedSize: p.formattedSize,
             isRemovable: p.isRemovable,
             isBoot: p.isBoot,
             operationalStatus: 'Mounted / Active',
@@ -273,25 +279,27 @@ try {
         }
       }
 
-      // Standalone volumes fallback
+      // Standalone volumes fallback (any mounted drive letters in File Explorer not mapped above)
       for (const v of volumes) {
         if (!v || !v.DriveLetter) continue;
         const letter = String(v.DriveLetter).trim().toUpperCase();
-        if (letter === 'C') continue;
 
         const alreadyIncluded = driveResults.some((dr) => dr.driveLetter === letter);
         if (!alreadyIncluded) {
           const volSize = Number(v.Size) || 0;
+          const formattedVolSize = this.formatBytes(volSize);
           const isRem = v.DriveType === 'Removable';
+          const displayName = v.FileSystemLabel || (isRem ? 'USB Drive' : 'Local Disk');
           driveResults.push({
             number: 900 + letter.charCodeAt(0),
-            friendlyName: `[${letter}:] Volume ${v.FileSystemLabel || 'External'} (${v.FileSystemType || 'FAT32'})`,
+            friendlyName: `[${letter}:] ${displayName} (${formattedVolSize}, ${v.FileSystemType || 'FAT32'})`,
             busType: isRem ? 'USB' : 'Logical',
-            mediaType: isRem ? 'USB Pen Drive Partition' : 'Logical Partition Volume',
+            mediaType: isRem ? 'Removable USB Partition' : 'Fixed Internal Partition',
             size: volSize,
-            sizeFormatted: this.formatBytes(volSize),
+            sizeFormatted: formattedVolSize,
+            formattedSize: formattedVolSize,
             isRemovable: isRem,
-            isBoot: false,
+            isBoot: letter === 'C',
             operationalStatus: 'Mounted',
             partitionStyle: v.FileSystemType || 'FAT32',
             path: `\\\\.\\${letter}:`,
@@ -305,22 +313,16 @@ try {
         }
       }
 
-      // Sort: Removable USB items first, parent disk followed by its partitions
+      // Sort: Removable external storage first, alphabetical by drive letter (e.g. D:, E:, then internal C:)
       driveResults.sort((a, b) => {
         if (a.isRemovable && !b.isRemovable) return -1;
         if (!a.isRemovable && b.isRemovable) return 1;
 
-        const aParent = a.parentDiskNumber ?? a.number;
-        const bParent = b.parentDiskNumber ?? b.number;
+        const aLetter = a.driveLetter || '';
+        const bLetter = b.driveLetter || '';
+        if (aLetter && bLetter) return aLetter.localeCompare(bLetter);
 
-        if (aParent !== bParent) {
-          return aParent - bParent;
-        }
-
-        if (!a.isPartition && b.isPartition) return -1;
-        if (a.isPartition && !b.isPartition) return 1;
-
-        return (a.partitionNumber || 0) - (b.partitionNumber || 0);
+        return a.number - b.number;
       });
 
       return driveResults;

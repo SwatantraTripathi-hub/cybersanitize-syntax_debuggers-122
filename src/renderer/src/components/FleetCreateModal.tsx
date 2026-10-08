@@ -180,51 +180,6 @@ export const FleetCreateModal: React.FC = () => {
                 </select>
               </div>
 
-              <fieldset className="space-y-2 border-t border-atlas-border pt-3">
-                <legend className="text-xs font-bold text-atlas-navy">Assigned workstation policy</legend>
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="space-y-1 text-[11px] font-semibold text-atlas-muted">
-                    <span className="block">Sanitization standard</span>
-                    <select
-                      value={wipeStandard}
-                      onChange={(event) => setWipeStandard(event.target.value)}
-                      className="w-full px-3 py-2 text-xs border border-atlas-border rounded-lg bg-atlas-bg text-atlas-text"
-                    >
-                      <option value="nist-clear">NIST SP 800-88 Clear</option>
-                      <option value="nist-purge">NIST SP 800-88 Purge</option>
-                      <option value="nvme-crypto">NVMe Cryptographic Erase</option>
-                      <option value="dod-3">DoD 5220.22-M (3-pass)</option>
-                    </select>
-                  </label>
-                  <div className="space-y-1">
-                    <span className="block text-[11px] font-semibold text-atlas-muted">Recovery file types</span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {['DOCX', 'PDF', 'SQLITE', 'JPEG', 'PNG'].map(type => (
-                        <button
-                          key={type}
-                          type="button"
-                          aria-pressed={recoveryTypes.includes(type)}
-                          onClick={() => toggleRecoveryType(type)}
-                          className={`px-2 py-1 rounded border text-[10px] font-bold ${recoveryTypes.includes(type) ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-white border-atlas-border text-atlas-muted'}`}
-                        >
-                          {type}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-x-5 gap-y-2 pt-1 text-[11px] text-atlas-text">
-                  <label className="inline-flex items-center gap-2">
-                    <input type="checkbox" checked={preScanEnabled} onChange={event => setPreScanEnabled(event.target.checked)} />
-                    Require pre-sanitization scan
-                  </label>
-                  <label className="inline-flex items-center gap-2">
-                    <input type="checkbox" checked={writeBlockerEnforced} onChange={event => setWriteBlockerEnforced(event.target.checked)} />
-                    Enforce forensic write blocker
-                  </label>
-                </div>
-              </fieldset>
-
               <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-800 flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>Devices pair over local network using an ephemeral room key.</span>

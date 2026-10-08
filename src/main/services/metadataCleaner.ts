@@ -1,19 +1,19 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import * as fs from 'fs';
+import * as path from 'path';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 
-const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 
 export class MetadataCleaner {
-  public async cleanMetadataTraces(filePath: string): Promise<string[]> {
+  async cleanMetadataTraces(filePath: string): Promise<string[]> {
     if (process.platform !== 'win32') return [];
-
+    
     const cleaned: string[] = [];
     const fileName = path.basename(filePath);
     const fileNameNoExt = path.parse(fileName).name.toLowerCase();
-
-    // Step 1: Native deletion of Recent shortcut files (.lnk)
+    
+    // Step 1: Fast native deletion of Recent shortcut files (.lnk)
     try {
       const recentPath = path.join(process.env.APPDATA || '', 'Microsoft', 'Windows', 'Recent');
       if (fs.existsSync(recentPath)) {
@@ -22,30 +22,22 @@ export class MetadataCleaner {
           if (entry.toLowerCase().endsWith('.lnk') && entry.toLowerCase().includes(fileNameNoExt)) {
             try {
               await fs.promises.unlink(path.join(recentPath, entry));
-            } catch {
-              // best-effort cleanup
-            }
+            } catch (_) {}
           }
         }
         cleaned.push('Recent Files (.lnk)');
       }
-    } catch {
-      // Non-fatal
+    } catch (e) {
+      console.warn('[MetadataCleaner] Recent files cleanup warning:', e);
     }
-
+    
     // Step 2: Non-blocking Explorer RecentDocs MRU Registry clean
     try {
-      await execFileAsync('reg.exe', [
-        'delete',
-        'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RecentDocs',
-        '/f'
-      ], { timeout: 3000, windowsHide: true });
+      const regCmd = `reg delete "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RecentDocs" /f`;
+      await execAsync(regCmd, { timeout: 3000, windowsHide: true }).catch(() => {});
       cleaned.push('Explorer MRU Cache');
-    } catch {
-      // Non-fatal
-    }
+    } catch (_) {}
 
     return cleaned;
   }
 }
-

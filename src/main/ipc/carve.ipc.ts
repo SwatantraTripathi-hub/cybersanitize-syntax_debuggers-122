@@ -1,19 +1,17 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron';
-import { CarveService } from '../services/carveService';
-import { assertSafeText, assertString } from '../security/inputGuard';
+import { CarvingEngine, SIGNATURES, detectPriorWipeAttempt } from '../engines/carvingEngine';
+import { AuditService } from '../services/auditService';
 
-export function registerCarveIpc(
-  mainWindow?: BrowserWindow | null,
-  carveService: CarveService = CarveService.getInstance()
-): void {
-  carveService.on('progress', (progress) => {
+export function registerCarveIpc(mainWindow: BrowserWindow, auditService: AuditService) {
+  const engine = new CarvingEngine();
+
+  engine.on('progress', (data) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('carve:progress', progress);
+      mainWindow.webContents.send('carve:progress', data);
     }
   });
 
   ipcMain.handle('carve:select-source', async () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return null;
     const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
       title: 'Select Evidence Disk Image (ISO/IEC 27037)',
       properties: ['openFile'],
@@ -22,39 +20,72 @@ export function registerCarveIpc(
         { name: 'All Files (*.*)', extensions: ['*'] }
       ]
     });
-    if (canceled || filePaths.length === 0) return null;
+    if (canceled) return null;
     return filePaths[0];
   });
-
+  
   ipcMain.handle('carve:get-signatures', () => {
-    return carveService.getSignatures();
+    return SIGNATURES.map(s => ({
+      name: s.name,
+      category: s.category,
+      extensions: s.extensions,
+      maxSize: s.maxSize
+    }));
   });
 
-  ipcMain.handle(
-    'carve:start',
-    async (_, sourcePath: unknown, outputDir: unknown, fileTypes: unknown, size?: unknown, caseMeta?: any) => {
-      const validSource = assertSafeText(sourcePath, 'sourcePath', 4096);
-      const validOutputDir = assertSafeText(outputDir, 'outputDir', 4096);
+  ipcMain.handle('carve:start', async (_, imagePath: string, outputDir: string, fileTypes: string[], size?: number, caseMeta?: any) => {
+    const operatorId = caseMeta?.operatorId || 'EXAMINER-101';
+    const caseId = caseMeta?.caseId || 'CASE-2026-0842';
+    const caseTitle = caseMeta?.caseTitle || caseMeta?.title || 'Triple-Tier Deep File Carving & Evidence Acquisition';
+    const evidenceTag = caseMeta?.evidenceTag || caseMeta?.tagId || 'EVD-PRIMARY-01';
 
-      const validTypes: string[] = [];
-      if (Array.isArray(fileTypes)) {
-        for (let i = 0; i < fileTypes.length; i++) {
-          validTypes.push(assertString(fileTypes[i], `fileTypes[${i}]`, 32));
+    const auditId = auditService.logOperation({
+      timestamp: new Date().toISOString(),
+      operation: 'FILE_RECOVERY',
+      target: imagePath,
+      details: { outputDir, fileTypes, size, caseId, operatorId, caseTitle, evidenceTag },
+      status: 'IN_PROGRESS',
+      operator: operatorId,
+      hash_before: null,
+      hash_after: null,
+      verification_result: null
+    });
+
+    try {
+      const result = await engine.carveFromImage(imagePath, outputDir, fileTypes, size);
+      
+      auditService.updateOperation(auditId, {
+        status: 'COMPLETED',
+        details: { 
+          outputDir, 
+          fileTypes, 
+          filesFound: result.filesFound.length, 
+          totalBytesScanned: result.totalBytesScanned,
+          durationMs: result.durationMs,
+          caseId,
+          operatorId,
+          caseTitle,
+          evidenceTag,
+          recoveredSamples: result.filesFound.map(f => ({ name: f.name, type: f.type, sha256: f.sha256, confidence: f.confidence }))
         }
-      }
-
-      let validSize: number | undefined;
-      if (typeof size === 'number' && Number.isSafeInteger(size) && size > 0) {
-        validSize = size;
-      }
-
-      return await carveService.startCarving(validSource, validOutputDir, validTypes, validSize, caseMeta);
+      });
+      
+      return result;
+    } catch (error: any) {
+      console.error('[IPC Carve] Carving error:', error);
+      auditService.updateOperation(auditId, {
+        status: 'FAILED',
+        details: { error: error.message, caseId, operatorId }
+      });
+      throw error;
     }
-  );
+  });
 
-  ipcMain.handle('carve:detect-anti-forensics', async (_, imagePath: unknown) => {
-    const validPath = assertSafeText(imagePath, 'imagePath', 4096);
-    return await carveService.detectAntiForensics(validPath);
+  ipcMain.handle('carve:detect-anti-forensics', async (_, imagePath: string) => {
+    try {
+      return await detectPriorWipeAttempt(imagePath);
+    } catch (e: any) {
+      return { detected: false, type: 'none', confidence: 0, details: e.message };
+    }
   });
 }
-

@@ -1,3 +1,1 @@
-import FileEraser from './FileEraser'
-export { FileEraser }
-export default FileEraser
+export { default as FileEraser } from './FileEraser'

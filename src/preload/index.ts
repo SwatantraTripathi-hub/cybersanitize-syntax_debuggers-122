@@ -7,7 +7,7 @@ let carvingProgressListener: ((_event: any, progress: any) => void) | null = nul
 
 const api = {
   // Drive operations
-  detectDrives: () => ipcRenderer.invoke('drive:detect'),
+  detectDrives: (forceRefresh?: boolean) => ipcRenderer.invoke('drive:detect', forceRefresh),
   getDriveInfo: (driveNumber: number) => ipcRenderer.invoke('drive:get-info', driveNumber),
 
   // Wipe operations
@@ -84,6 +84,7 @@ const api = {
 
   // Reports
   generateReport: (operationId: number) => ipcRenderer.invoke('report:generate', operationId),
+  generateFleetReport: (payload: any) => ipcRenderer.invoke('report:generate-fleet', payload),
   verifyReport: (pdfPath: string, sigPath: string) => ipcRenderer.invoke('report:verify', pdfPath, sigPath),
   verifyReportFile: (pdfPath?: string) => ipcRenderer.invoke('report:verify-file', pdfPath),
   openReport: (filePath: string) => ipcRenderer.invoke('report:open', filePath),

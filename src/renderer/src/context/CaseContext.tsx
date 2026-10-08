@@ -139,128 +139,17 @@ const DEFAULT_OPERATOR: OperatorProfile = {
 const DEFAULT_CASES: CaseRecord[] = [
   {
     caseId: 'WS-2026-0842',
-    title: 'High-Capacity Removable Storage Sanitization & Recovery Triage',
+    title: 'Storage Sanitization & Recovery Workspace',
     evidenceTag: 'AST-STORAGE-01',
     authorizingOfficer: 'Systems Director / Infrastructure Operations',
     date: new Date().toISOString().split('T')[0],
-    notes: 'Comprehensive storage media triage under NIST SP 800-88 & ISO/IEC 27037 standards.',
+    notes: 'Comprehensive storage media operations under NIST SP 800-88 & ISO/IEC 27037 standards.',
     classification: 'ENTERPRISE CONFIDENTIAL / COMPLIANT',
-    driveSerial: 'SANDISK-ULTRA-32GB',
-    status: 'ACTIVE',
-    mode: 'SINGLE'
-  },
-  {
-    caseId: 'WS-2026-ENT-0042',
-    title: 'Enterprise Server Storage Decommission & Certified Audit',
-    evidenceTag: 'AST-NVME-02',
-    authorizingOfficer: 'Chief Information Security Officer (CISO)',
-    date: '2026-09-10',
-    notes: 'NIST SP 800-88 Rev. 1 compliance audit for corporate storage retirement.',
-    classification: 'ISO 27001 & SOC 2 COMPLIANT',
-    driveSerial: 'WD-SN740-512GB',
+    driveSerial: 'STORAGE-DEV-01',
     status: 'ACTIVE',
     mode: 'SINGLE'
   }
 ];
-
-const DEFAULT_FLEET_NODES: FleetNode[] = [
-  {
-    id: 'node-01',
-    hostname: 'DELL-LAT-5420',
-    ip: '192.168.1.101',
-    mac: '00:1A:2B:3C:4D:5E',
-    model: 'Dell Latitude 5420 (Core i7 / 16GB)',
-    storage: '512 GB NVMe (Samsung PM991)',
-    status: 'ONLINE',
-    progress: 0,
-    speed: '0 MB/s',
-    eta: '--',
-    selected: true,
-    lastLog: 'Connected over local LAN WebSocket (Node heartbeat active).'
-  },
-  {
-    id: 'node-02',
-    hostname: 'THINKPAD-T14-G2',
-    ip: '192.168.1.102',
-    mac: '00:23:45:67:89:AB',
-    model: 'Lenovo ThinkPad T14 Gen 2',
-    storage: '1 TB SATA SSD (Crucial MX500)',
-    status: 'ONLINE',
-    progress: 0,
-    speed: '0 MB/s',
-    eta: '--',
-    selected: true,
-    lastLog: 'Connected over local LAN WebSocket (Node heartbeat active).'
-  },
-  {
-    id: 'node-03',
-    hostname: 'HP-ELITE-840',
-    ip: '192.168.1.103',
-    mac: '00:11:22:33:44:55',
-    model: 'HP EliteBook 840 G8',
-    storage: '256 GB NVMe (Kioxia KBG40)',
-    status: 'ONLINE',
-    progress: 0,
-    speed: '0 MB/s',
-    eta: '--',
-    selected: true,
-    lastLog: 'Connected over local LAN WebSocket (Node heartbeat active).'
-  },
-  {
-    id: 'node-04',
-    hostname: 'SURFACE-PRO-8',
-    ip: '192.168.1.104',
-    mac: '00:55:66:77:88:99',
-    model: 'Microsoft Surface Laptop Studio',
-    storage: '512 GB NVMe (Micron 2450)',
-    status: 'ONLINE',
-    progress: 0,
-    speed: '0 MB/s',
-    eta: '--',
-    selected: true,
-    lastLog: 'Connected over local LAN WebSocket (Node heartbeat active).'
-  }
-];
-
-const FALLBACK_DRIVES = [
-  {
-    number: 0,
-    friendlyName: 'NVMe Samsung SSD 980 PRO 1TB',
-    size: 1000204886016,
-    formattedSize: '931.51 GB',
-    busType: 'NVMe',
-    mediaType: 'Fixed hard disk media',
-    isRemovable: false,
-    isBoot: true,
-    isPartition: false,
-    path: '\\\\.\\PHYSICALDRIVE0'
-  },
-  {
-    number: 1,
-    friendlyName: 'SanDisk Ultra USB 3.0 (32 GB) - E:\\ (FAT32)',
-    size: 31000000000,
-    formattedSize: '28.87 GB',
-    busType: 'USB',
-    mediaType: 'External Media',
-    isRemovable: true,
-    isBoot: false,
-    isPartition: true,
-    path: '\\\\.\\PHYSICALDRIVE1'
-  },
-  {
-    number: 2,
-    friendlyName: 'Kingston DataTraveler 64GB - F:\\ (exFAT)',
-    size: 62000000000,
-    formattedSize: '57.74 GB',
-    busType: 'USB',
-    mediaType: 'External Media',
-    isRemovable: true,
-    isBoot: false,
-    isPartition: true,
-    path: '\\\\.\\PHYSICALDRIVE2'
-  }
-];
-
 const CaseContext = createContext<CaseContextType | undefined>(undefined);
 
 export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -305,10 +194,10 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [protectedDrives, setProtectedDrives] = useState<string[]>([]);
   const [systemPolicyActive, setSystemPolicyActive] = useState<boolean>(false);
 
-  // Drives state with fallback mock drives
-  const [drives, setDrives] = useState<any[]>(FALLBACK_DRIVES);
+  // Drives state
+  const [drives, setDrives] = useState<any[]>([]);
   const [isDrivesLoading, setIsDrivesLoading] = useState<boolean>(false);
-  const [selectedDrive, setSelectedDrive] = useState<any>(FALLBACK_DRIVES[1]);
+  const [selectedDrive, setSelectedDrive] = useState<any>(null);
 
   // Pre-wipe vs Post-wipe Evidence State
   const [preWipeFiles, setPreWipeFilesState] = useState<any[]>(() => {
@@ -396,16 +285,19 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setSelectedDrive(d[0]);
           }
         } else {
-          setDrives(FALLBACK_DRIVES);
+          setDrives([]);
+          setSelectedDrive(null);
         }
       } catch (e) {
-        console.warn('[CaseContext] Using fallback drives list:', e);
-        setDrives(FALLBACK_DRIVES);
+        console.warn('[CaseContext] Detect drives error:', e);
+        setDrives([]);
+        setSelectedDrive(null);
       } finally {
         setIsDrivesLoading(false);
       }
     } else {
-      setDrives(FALLBACK_DRIVES);
+      setDrives([]);
+      setSelectedDrive(null);
     }
   };
 

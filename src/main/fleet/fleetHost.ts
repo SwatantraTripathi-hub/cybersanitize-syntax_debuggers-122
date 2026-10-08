@@ -13,7 +13,6 @@
 import { EventEmitter } from 'node:events'
 import { WebSocketServer, WebSocket } from 'ws'
 import type { IncomingMessage } from 'node:http'
-import type { Server } from 'node:net'
 import type { Socket as DatagramSocket } from 'node:dgram'
 import { startFleetDiscoveryResponder } from './fleetDiscovery'
 import {

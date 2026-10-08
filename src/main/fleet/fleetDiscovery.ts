@@ -130,7 +130,7 @@ function getBroadcastAddresses(includeLoopback: boolean): string[] {
 
   for (const interfaces of Object.values(os.networkInterfaces())) {
     for (const network of interfaces ?? []) {
-      if (network.internal || (network.family !== 'IPv4' && network.family !== 4)) continue
+      if (network.internal || ((network.family as any) !== 'IPv4' && (network.family as any) !== 4)) continue
 
       const address = ipv4ToNumber(network.address)
       const mask = ipv4ToNumber(network.netmask)

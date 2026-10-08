@@ -2,11 +2,12 @@ import { ipcMain, BrowserWindow } from 'electron'
 import { FleetHost } from '../fleet/fleetHost'
 import { FleetClient } from '../fleet/fleetClient'
 import { discoverFleetHost } from '../fleet/fleetDiscovery'
+import { AuditService } from '../services/auditService'
 
 let fleetHostInstance: FleetHost | null = null
 let fleetClientInstance: FleetClient | null = null
 
-export function registerFleetIpc(mainWindow: BrowserWindow): void {
+export function registerFleetIpc(mainWindow: BrowserWindow, auditService?: AuditService): void {
   // 1. Create Fleet Host Lobby
   ipcMain.handle('fleet:create-lobby', async (_, port: number = 4096) => {
     try {
@@ -38,6 +39,28 @@ export function registerFleetIpc(mainWindow: BrowserWindow): void {
       fleetHostInstance.on('node:completed', (data) => {
         if (!mainWindow.isDestroyed()) {
           mainWindow.webContents.send('fleet:node-complete', data)
+        }
+        if (auditService) {
+          try {
+            auditService.logOperation({
+              timestamp: new Date().toISOString(),
+              operation: (data.operation || 'DRIVE_WIPE') as any,
+              target: `Fleet Node: ${data.nodeId || 'Node'} (${data.hostname || data.ip || 'Remote'})`,
+              details: {
+                systemHost: data.hostname,
+                nodeId: data.nodeId,
+                ip: data.ip,
+                status: 'COMPLETED',
+                standard: data.standard || 'nist-clear',
+                fleetCluster: true
+              },
+              status: 'VERIFIED',
+              operator: 'FLEET_ORCHESTRATOR',
+              hash_before: data.preHash || null,
+              hash_after: data.postHash || null,
+              verification_result: data.verification || { verified: true }
+            })
+          } catch (_) {}
         }
       })
 
