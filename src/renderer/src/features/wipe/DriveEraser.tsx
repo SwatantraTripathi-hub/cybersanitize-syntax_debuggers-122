@@ -130,6 +130,41 @@ export default function DriveEraser() {
     drawHeatmap(0, false)
   }, [])
 
+  useEffect(() => {
+    if (!selectedFleetNode || isJoinedClientNode || !window.api) return
+    const unsubs: Array<(() => void) | void> = []
+    if (window.api.onFleetTelemetry) {
+      unsubs.push(window.api.onFleetTelemetry((data: any) => {
+        if (data.nodeId !== selectedFleetNode.id) return
+        const telemetry = data.telemetry
+        const percentage = telemetry.progress || 0
+        setProgress({
+          percentage,
+          percent: percentage,
+          speed: telemetry.speed,
+          eta: telemetry.eta,
+          stage: telemetry.logLine,
+          status: telemetry.phase === 'SANITIZING' ? 'running' : telemetry.phase.toLowerCase()
+        })
+        if (telemetry.phase === 'SANITIZING') {
+          setStatus('running')
+          drawHeatmap(percentage, false)
+        }
+      }))
+    }
+    if (window.api.onFleetNodeComplete) {
+      unsubs.push(window.api.onFleetNodeComplete((data: any) => {
+        if (data.nodeId !== selectedFleetNode.id || data.result.operation !== 'WIPE') return
+        setLastResult(data.result)
+        setStatus(data.result.success ? 'completed' : 'failed')
+        setProgress({ percentage: 100, percent: 100, stage: data.result.summary, status: data.result.success ? 'completed' : 'failed' })
+        drawHeatmap(100, data.result.success)
+        if (data.result.success) setDriveWasWiped(true)
+      }))
+    }
+    return () => unsubs.forEach(unsub => typeof unsub === 'function' && unsub())
+  }, [selectedFleetNode?.id, isJoinedClientNode])
+
   // Draw initial unallocated grid on mount / drive change
   useEffect(() => {
     if (status === 'completed') {
