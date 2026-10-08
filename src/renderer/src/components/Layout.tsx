@@ -69,7 +69,9 @@ export const Layout: React.FC = () => {
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/recovery', label: 'Data Recovery', icon: Search },
     { path: '/drive-eraser', label: 'Drive Sanitizer', icon: HardDrive },
-    { path: '/file-eraser', label: 'File Shredder', icon: FileX },
+    ...(orchestrationMode === 'MULTI'
+      ? []
+      : [{ path: '/file-eraser', label: 'File Shredder', icon: FileX }]),
     { path: '/audit', label: 'Audit Trail', icon: ClipboardList },
     { path: '/reports', label: 'Compliance Reports', icon: FileText }
   ]

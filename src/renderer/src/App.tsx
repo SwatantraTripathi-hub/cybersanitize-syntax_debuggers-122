@@ -36,7 +36,10 @@ const AppContent: React.FC = () => {
             <Route index element={<Dashboard />} />
             <Route path="recovery" element={<Recovery />} />
             <Route path="drive-eraser" element={<DriveEraser />} />
-            <Route path="file-eraser" element={<FileEraser />} />
+            <Route
+              path="file-eraser"
+              element={orchestrationMode === 'MULTI' ? <Navigate to="/" replace /> : <FileEraser />}
+            />
             <Route path="audit" element={<AuditLog />} />
             <Route path="reports" element={<Reports />} />
             <Route path="*" element={<Navigate to="/" replace />} />
