@@ -58,6 +58,13 @@ export const NodeCard: React.FC<NodeCardProps> = ({
             RECOVERING
           </span>
         )
+      case 'ERASING':
+        return (
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono bg-red-50 text-red-700 border border-red-200 flex items-center gap-1">
+            <Flame className="w-3 h-3 animate-pulse" />
+            ERASING ({node.progress}%)
+          </span>
+        )
       case 'VERIFIED':
         return (
           <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono bg-atlas-lightgreen text-atlas-forest border border-atlas-bordergreen flex items-center gap-1">

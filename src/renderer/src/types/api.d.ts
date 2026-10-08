@@ -98,6 +98,12 @@ declare global {
         nodeIds?: string[],
         sourcePathByNode?: Record<string, string>,
       ) => Promise<{ success: boolean; error?: string }>;
+      broadcastFileErase?: (
+        paths: string[],
+        standard: string,
+        cleanMetadata: boolean,
+        nodeIds?: string[],
+      ) => Promise<{ success: boolean; error?: string }>;
       closeLobby?: () => Promise<{ success: boolean }>;
       leaveFleetWorkspace?: () => Promise<{ success: boolean }>;
       getFleetNodes?: () => Promise<any[]>;

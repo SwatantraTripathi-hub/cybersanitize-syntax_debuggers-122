@@ -20,6 +20,7 @@ export enum FleetMessageType {
   PRE_SCAN_REQ = "PRE_SCAN_REQ",
   EXEC_WIPE = "EXEC_WIPE",
   EXEC_RECOVERY = "EXEC_RECOVERY",
+  EXEC_FILE_ERASE = "EXEC_FILE_ERASE",
   BROADCAST = "BROADCAST",
   DISCONNECT = "DISCONNECT",
 }
@@ -92,9 +93,15 @@ export interface ExecuteRecoveryPayload {
   outputDir?: string;
 }
 
+export interface ExecuteFileErasePayload {
+  paths: string[];
+  standard: string;
+  cleanMetadata: boolean;
+}
+
 export interface JobCompletePayload {
   success: boolean;
-  operation: "WIPE" | "RECOVERY" | "PRE_SCAN";
+  operation: "WIPE" | "RECOVERY" | "FILE_ERASE" | "PRE_SCAN";
   summary: string;
   durationMs: number;
 }
@@ -145,6 +152,7 @@ export interface ConnectedNode {
     | "PRE-SCANNING"
     | "SANITIZING"
     | "RECOVERING"
+    | "ERASING"
     | "VERIFIED"
     | "FAILED"
     | "IDLE";

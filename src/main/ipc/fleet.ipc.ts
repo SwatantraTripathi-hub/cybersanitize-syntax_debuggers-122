@@ -49,7 +49,11 @@ export function registerFleetIpc(
             const node = fleetHostInstance?.getNode(data.nodeId);
             const workspace = fleetHostInstance?.getWorkspaceMeta();
             const operation =
-              result.operation === "RECOVERY" ? "FILE_RECOVERY" : "DRIVE_WIPE";
+              result.operation === "RECOVERY"
+                ? "FILE_RECOVERY"
+                : result.operation === "FILE_ERASE"
+                  ? "FILE_ERASE"
+                  : "DRIVE_WIPE";
             auditService.logOperation({
               timestamp: new Date().toISOString(),
               operation,
@@ -173,8 +177,18 @@ export function registerFleetIpc(
       targetPathByNode?: Record<string, string>,
     ) => {
       if (fleetHostInstance) {
-        const dispatched = fleetHostInstance.broadcastPreScan(nodeIds, targetPathByNode);
-        return { success: dispatched > 0, dispatched, error: dispatched > 0 ? undefined : "No selected fleet nodes are connected." };
+        const dispatched = fleetHostInstance.broadcastPreScan(
+          nodeIds,
+          targetPathByNode,
+        );
+        return {
+          success: dispatched > 0,
+          dispatched,
+          error:
+            dispatched > 0
+              ? undefined
+              : "No selected fleet nodes are connected.",
+        };
       }
       return { success: false, error: "Fleet host not running" };
     },
@@ -190,8 +204,19 @@ export function registerFleetIpc(
       targetPathByNode?: Record<string, string>,
     ) => {
       if (fleetHostInstance) {
-        const dispatched = fleetHostInstance.broadcastWipe(standard, nodeIds, targetPathByNode);
-        return { success: dispatched > 0, dispatched, error: dispatched > 0 ? undefined : "No selected fleet nodes are connected." };
+        const dispatched = fleetHostInstance.broadcastWipe(
+          standard,
+          nodeIds,
+          targetPathByNode,
+        );
+        return {
+          success: dispatched > 0,
+          dispatched,
+          error:
+            dispatched > 0
+              ? undefined
+              : "No selected fleet nodes are connected.",
+        };
       }
       return { success: false, error: "Fleet host not running" };
     },
@@ -212,13 +237,50 @@ export function registerFleetIpc(
           nodeIds,
           sourcePathByNode,
         );
-        return { success: dispatched > 0, dispatched, error: dispatched > 0 ? undefined : "No selected fleet nodes are connected." };
+        return {
+          success: dispatched > 0,
+          dispatched,
+          error:
+            dispatched > 0
+              ? undefined
+              : "No selected fleet nodes are connected.",
+        };
       }
       return { success: false, error: "Fleet host not running" };
     },
   );
 
-  // 6. Close Lobby
+  // 6. Broadcast targeted file erasure
+  ipcMain.handle(
+    "fleet:broadcast-file-erase",
+    async (
+      _,
+      paths: string[],
+      standard: string,
+      cleanMetadata: boolean,
+      nodeIds?: string[],
+    ) => {
+      if (fleetHostInstance) {
+        const dispatched = fleetHostInstance.broadcastFileErase(
+          paths,
+          standard,
+          cleanMetadata,
+          nodeIds,
+        );
+        return {
+          success: dispatched > 0,
+          dispatched,
+          error:
+            dispatched > 0
+              ? undefined
+              : "No selected fleet nodes are connected.",
+        };
+      }
+      return { success: false, error: "Fleet host not running" };
+    },
+  );
+
+  // 7. Close Lobby
   ipcMain.handle("fleet:close-lobby", async () => {
     if (fleetHostInstance) {
       fleetHostInstance.closeLobby();

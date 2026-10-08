@@ -283,7 +283,9 @@ class FleetHost extends EventEmitter {
             const node = this.nodes.get(registeredNodeId);
             if (node) {
               node.status = result.success
-                ? (result.operation === "WIPE" ? "VERIFIED" : "IDLE")
+                ? result.operation === "WIPE"
+                  ? "VERIFIED"
+                  : "IDLE"
                 : "FAILED";
               node.progress = 100;
               node.speed = "0 MB/s";
@@ -341,9 +343,13 @@ class FleetHost extends EventEmitter {
     const targets = nodeIds || Array.from(this.sockets.keys());
     let dispatched = 0;
     for (const nodeId of targets) {
-      dispatched += this._broadcastToNodes([nodeId], FleetMessageType.PRE_SCAN_REQ, {
-        targetPath: targetPathByNode?.[nodeId],
-      });
+      dispatched += this._broadcastToNodes(
+        [nodeId],
+        FleetMessageType.PRE_SCAN_REQ,
+        {
+          targetPath: targetPathByNode?.[nodeId],
+        },
+      );
     }
     console.log(
       `[FleetHost] Pre-scan request broadcast to ${nodeIds?.length ?? this.nodes.size} nodes`,
@@ -366,7 +372,11 @@ class FleetHost extends EventEmitter {
         standard,
         targetPath: targetPathByNode?.[nodeId],
       };
-      dispatched += this._broadcastToNodes([nodeId], FleetMessageType.EXEC_WIPE, payload);
+      dispatched += this._broadcastToNodes(
+        [nodeId],
+        FleetMessageType.EXEC_WIPE,
+        payload,
+      );
     }
     console.log(
       `[FleetHost] Wipe (${standard}) broadcast to ${nodeIds?.length ?? this.nodes.size} nodes`,
@@ -389,9 +399,27 @@ class FleetHost extends EventEmitter {
         fileTypes,
         sourcePath: sourcePathByNode?.[nodeId],
       };
-      dispatched += this._broadcastToNodes([nodeId], FleetMessageType.EXEC_RECOVERY, payload);
+      dispatched += this._broadcastToNodes(
+        [nodeId],
+        FleetMessageType.EXEC_RECOVERY,
+        payload,
+      );
     }
     return dispatched;
+  }
+
+  broadcastFileErase(
+    paths: string[],
+    standard: string,
+    cleanMetadata: boolean,
+    nodeIds?: string[],
+  ): number {
+    const payload = { paths, standard, cleanMetadata };
+    return this._broadcastToNodes(
+      nodeIds,
+      FleetMessageType.EXEC_FILE_ERASE,
+      payload,
+    );
   }
 
   /**
