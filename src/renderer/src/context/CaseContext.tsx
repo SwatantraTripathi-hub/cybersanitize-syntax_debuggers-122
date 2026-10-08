@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 
 export type OrchestrationMode = 'LANDING' | 'SINGLE' | 'MULTI';
 
@@ -199,6 +199,7 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [drives, setDrives] = useState<any[]>([]);
   const [isDrivesLoading, setIsDrivesLoading] = useState<boolean>(false);
   const [selectedDrive, setSelectedDrive] = useState<any>(null);
+  const drivesOwnerRef = useRef<'local' | 'fleet'>('local');
 
   // Pre-wipe vs Post-wipe Evidence State
   const [preWipeFiles, setPreWipeFilesState] = useState<any[]>(() => {
@@ -270,10 +271,12 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const refreshDrives = async (force = false) => {
+    if (drivesOwnerRef.current === 'fleet') return;
     if (window.api?.detectDrives) {
       setIsDrivesLoading(true);
       try {
         const d = await window.api.detectDrives(force);
+        if (drivesOwnerRef.current === 'fleet') return;
         if (d && Array.isArray(d) && d.length > 0) {
           setDrives(d);
           const removablePart = d.find(drive => (drive.isRemovable || drive.busType === 'USB') && drive.isPartition);
@@ -754,6 +757,7 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsWebSocketConnected(true);
     setOrchestrationMode('MULTI');
 
+    drivesOwnerRef.current = 'fleet';
     setDrives(clientNode.drives);
     setSelectedDrive(clientNode.drives[0] || null);
 
@@ -841,16 +845,20 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const selectFleetNodeForEngine = (node: FleetNode) => {
+    drivesOwnerRef.current = 'fleet';
     setSelectedFleetNode(node);
     setDrives(node.drives || []);
     setSelectedDrive(node.drives?.[0] || null);
   };
 
   const backToFleetOverview = () => {
+    drivesOwnerRef.current = 'local';
     setSelectedFleetNode(null);
+    void refreshDrives(true);
   };
 
   const backToLanding = () => {
+    drivesOwnerRef.current = 'local';
     if (isJoinedClientNode) {
       void window.api?.leaveFleetWorkspace?.().catch((error: unknown) => {
         console.warn('[CaseContext] Could not close fleet client connection:', error);
