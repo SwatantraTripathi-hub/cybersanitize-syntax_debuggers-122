@@ -40,6 +40,8 @@ export default function Recovery() {
     driveWasWiped,
     orchestrationMode,
     selectedFleetNode,
+    isJoinedClientNode,
+    dispatchBatchRecovery,
     backToFleetOverview
   } = useCase()
 
@@ -242,6 +244,12 @@ export default function Recovery() {
     drawHeatmap(1, false)
 
     const selectedTypes = Object.entries(fileTypes).filter(([_, v]) => v).map(([k]) => k)
+
+    if (selectedFleetNode && !isJoinedClientNode) {
+      setStatus('running')
+      dispatchBatchRecovery(selectedTypes, selectedDrive?.path || sourcePath)
+      return
+    }
 
     if (window.api?.startCarving) {
       try {

@@ -28,6 +28,8 @@ export default function DriveEraser() {
     refreshDrives, 
     selectedDrive, 
     setSelectedDrive,
+    isJoinedClientNode,
+    dispatchBatchWipe,
     protectedDrives,
     toggleDriveProtection,
     refreshWriteBlockerStatus,
@@ -198,6 +200,12 @@ export default function DriveEraser() {
       `PERMANENT SANITIZATION WARNING:\n\nTarget: ${selectedDrive.friendlyName}\nStandard: ${standard}\nCase: ${activeCase.caseId}${boundaryNotice}\n\nProceed with secure data sanitization?`
     )
     if (!isConfirmed) return
+
+    if (selectedFleetNode && !isJoinedClientNode) {
+      setStatus('running')
+      dispatchBatchWipe(standard)
+      return
+    }
     
     setStatus('running')
     setProgress({

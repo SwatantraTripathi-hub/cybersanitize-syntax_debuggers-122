@@ -60,6 +60,7 @@ export interface FleetNode {
     safeToWipe: boolean;
   };
   lastLog: string;
+  drives: any[];
 }
 
 interface CaseContextType {
@@ -118,7 +119,7 @@ interface CaseContextType {
   selectAllNodes: (selected: boolean) => void;
   dispatchBatchPreScan: () => void;
   dispatchBatchWipe: (standard?: string) => void;
-  dispatchBatchRecovery: (types?: string[]) => void;
+  dispatchBatchRecovery: (types?: string[], sourcePath?: string) => void;
   selectFleetNodeForEngine: (node: FleetNode) => void;
   backToFleetOverview: () => void;
   backToLanding: () => void;
@@ -361,6 +362,7 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 ...n,
                 hostname: realNode.hostname,
                 ip: realNode.ip,
+                drives: realNode.drives || n.drives,
                 status: 'ONLINE',
                 lastLog: realNode.lastLog || n.lastLog
               } : n);
@@ -377,6 +379,7 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
               speed: '0 MB/s',
               eta: '--',
               selected: true,
+              drives: realNode.drives || [],
               lastLog: realNode.lastLog || 'Connected to local LAN WebSocket mesh.'
             };
             return [...prev, newNode];
@@ -673,7 +676,7 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const nodeId = `client-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     let remoteWorkspace: any = null;
-    let localNodeDetails: { hostname: string; ip: string; mac: string; model: string; storage: string } | undefined;
+    let localNodeDetails: { hostname: string; ip: string; mac: string; model: string; storage: string; drives?: any[] } | undefined;
 
     if (!window.api?.joinLobby) {
       return { success: false, error: 'Fleet joining is only available in the CyberSanitize desktop app.' };
@@ -742,6 +745,7 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
       speed: '0 MB/s',
       eta: '--',
       selected: true,
+      drives: localNodeDetails?.drives || [],
       lastLog: `Connected to central fleet room ${params.roomCode} via LAN discovery.`
     };
 
@@ -750,18 +754,8 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsWebSocketConnected(true);
     setOrchestrationMode('MULTI');
 
-    setSelectedDrive({
-      number: 0,
-      friendlyName: `${clientNode.hostname} Storage (${clientNode.storage})`,
-      size: 512 * 1024 * 1024 * 1024,
-      formattedSize: clientNode.storage,
-      busType: 'NVMe Direct',
-      mediaType: 'Fixed Media',
-      isRemovable: false,
-      isBoot: false,
-      isPartition: true,
-      path: `\\\\.\\${clientNode.hostname}\\PHYSICALDRIVE0`
-    });
+    setDrives(clientNode.drives);
+    setSelectedDrive(clientNode.drives[0] || null);
 
     return { success: true };
   };
@@ -778,7 +772,10 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Dispatch real IPC broadcast to connected fleet nodes
     if (window.api?.broadcastPreScan) {
       const selectedIds = connectedNodes.filter(n => n.selected).map(n => n.id);
-      window.api.broadcastPreScan(selectedIds.length > 0 ? selectedIds : undefined).catch(console.warn);
+      const targetPathByNode = selectedFleetNode && selectedDrive?.path
+        ? { [selectedFleetNode.id]: selectedDrive.path }
+        : undefined;
+      window.api.broadcastPreScan(selectedIds.length > 0 ? selectedIds : undefined, targetPathByNode).catch(console.warn);
     }
 
     setConnectedNodes(prev => prev.map(node => {
@@ -799,7 +796,10 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Dispatch real IPC broadcast to connected fleet nodes
     if (window.api?.broadcastWipe) {
       const selectedIds = connectedNodes.filter(n => n.selected).map(n => n.id);
-      window.api.broadcastWipe(standard, selectedIds.length > 0 ? selectedIds : undefined).catch(console.warn);
+      const targetPathByNode = selectedFleetNode && selectedDrive?.path
+        ? { [selectedFleetNode.id]: selectedDrive.path }
+        : undefined;
+      window.api.broadcastWipe(standard, selectedIds.length > 0 ? selectedIds : undefined, targetPathByNode).catch(console.warn);
     }
 
     setConnectedNodes(prev => prev.map(node => {
@@ -816,11 +816,14 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   };
 
-  const dispatchBatchRecovery = (types = ['DOCX', 'PDF', 'SQLITE']) => {
+  const dispatchBatchRecovery = (types = ['DOCX', 'PDF', 'SQLITE'], sourcePath?: string) => {
     // Dispatch real IPC broadcast to connected fleet nodes
     if (window.api?.broadcastRecovery) {
       const selectedIds = connectedNodes.filter(n => n.selected).map(n => n.id);
-      window.api.broadcastRecovery(types, selectedIds.length > 0 ? selectedIds : undefined).catch(console.warn);
+      const sourcePathByNode = selectedFleetNode && (sourcePath || selectedDrive?.path)
+        ? { [selectedFleetNode.id]: sourcePath || selectedDrive.path }
+        : undefined;
+      window.api.broadcastRecovery(types, selectedIds.length > 0 ? selectedIds : undefined, sourcePathByNode).catch(console.warn);
     }
 
     setConnectedNodes(prev => prev.map(node => {
@@ -839,20 +842,8 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const selectFleetNodeForEngine = (node: FleetNode) => {
     setSelectedFleetNode(node);
-    // Bind current activeCase view to this node
-    const nodeDrive = {
-      number: 1,
-      friendlyName: `${node.model} Storage (${node.storage})`,
-      size: 512 * 1024 * 1024 * 1024,
-      formattedSize: node.storage,
-      busType: 'NVMe Direct',
-      mediaType: 'Fixed Media',
-      isRemovable: false,
-      isBoot: false,
-      isPartition: true,
-      path: `\\\\.\\${node.hostname}\\PHYSICALDRIVE0`
-    };
-    setSelectedDrive(nodeDrive);
+    setDrives(node.drives || []);
+    setSelectedDrive(node.drives?.[0] || null);
   };
 
   const backToFleetOverview = () => {
