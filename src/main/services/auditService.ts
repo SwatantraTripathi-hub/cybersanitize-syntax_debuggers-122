@@ -611,14 +611,16 @@ export class AuditService {
         new Uint8Array(Buffer.from(envelope.signature || '', 'hex')),
         new Uint8Array(Buffer.from(envelope.publicKey || '', 'hex'))
       );
+      const issuerTrusted = envelope.publicKey === this.getPublicKey();
       const chainBlocks = [...(envelope.payload?.chainBlocks || envelope.payload?.blocks || [])]
         .sort((a: AuditEntry, b: AuditEntry) => (a.id || 0) - (b.id || 0));
       const chain = verifyEntries(chainBlocks, envelope.publicKey || '');
       const errors: string[] = [];
       if (calculatedHash !== envelope.chainHash) errors.push('Chain export payload hash mismatch.');
       if (!signatureValid) errors.push('Chain export signature verification failed.');
+      if (!issuerTrusted) errors.push('Chain export was signed by an untrusted issuer key.');
       if (!chain.intact) errors.push(chain.reason || 'Exported chain is invalid.');
-      return { isValid: calculatedHash === envelope.chainHash && signatureValid && chain.intact, chainIntact: chain.intact, signatureValid, caseId: envelope.payload?.caseId || 'ALL', count: chainBlocks.length, errors };
+      return { isValid: calculatedHash === envelope.chainHash && signatureValid && issuerTrusted && chain.intact, chainIntact: chain.intact, signatureValid, caseId: envelope.payload?.caseId || 'ALL', count: chainBlocks.length, errors };
     } catch (error: any) {
       return { isValid: false, chainIntact: false, signatureValid: false, caseId: '', count: 0, errors: [error.message] };
     }
@@ -772,6 +774,7 @@ export class AuditService {
 
       // 3. Verify Ed25519 bundle signature
       let signatureValid = false;
+      const issuerTrusted = sigJson.publicKey === this.getPublicKey();
       try {
         const sigBytes = new Uint8Array(Buffer.from(sigJson.signature, 'hex'));
         const pubBytes = new Uint8Array(Buffer.from(sigJson.publicKey, 'hex'));
@@ -781,50 +784,17 @@ export class AuditService {
       } catch (e: any) {
         errors.push(`Signature verification error: ${e.message}`);
       }
+      if (!issuerTrusted) errors.push('Bundle was signed by an untrusted issuer key.');
 
       // 4. Verify internal ledger hash chain and block signatures
       const ledger = JSON.parse(ledgerJson);
       const blocks: AuditEntry[] = [...(ledger.blocks || [])].sort((a, b) => (a.id || 0) - (b.id || 0));
       const chainBlocks: AuditEntry[] = [...(ledger.chainBlocks || blocks)].sort((a, b) => (a.id || 0) - (b.id || 0));
-      let chainIntact = true;
+      const chainCheck = verifyEntries(chainBlocks, sigJson.publicKey || '');
+      const chainIntact = chainCheck.intact;
+      if (!chainIntact) errors.push(chainCheck.reason || 'Exported chain is invalid.');
 
-      for (let i = 0; i < chainBlocks.length; i++) {
-        const block = chainBlocks[i];
-        const prevBlock = i > 0 ? chainBlocks[i - 1] : null;
-
-        // If contiguous blocks exist in the export, check their cryptographic link
-        if (prevBlock && block.id === (prevBlock.id || 0) + 1) {
-          if (block.prev_hash !== prevBlock.entry_hash) {
-            chainIntact = false;
-            errors.push(`Hash chain link mismatch between block #${prevBlock.id} and block #${block.id}`);
-            break;
-          }
-        }
-
-        // Always verify that the block's entry_hash matches the cryptographic payload
-        const recomputed = computeEntryHash({ ...block, id: block.id!, prev_hash: block.prev_hash || GENESIS_HASH });
-        if (block.entry_hash && recomputed !== block.entry_hash) {
-          chainIntact = false;
-          errors.push(`Block #${block.id} data has been tampered with after sealing!`);
-          break;
-        }
-
-        // Verify individual block Ed25519 detached signature if signed
-        if (block.signature && sigJson.publicKey) {
-          try {
-            const blockSigBytes = new Uint8Array(Buffer.from(block.signature, 'hex'));
-            const pubBytes = new Uint8Array(Buffer.from(sigJson.publicKey, 'hex'));
-            const hashBytes = Buffer.from(block.entry_hash || recomputed, 'hex');
-            if (!nacl.sign.detached.verify(hashBytes, blockSigBytes, pubBytes)) {
-              chainIntact = false;
-              errors.push(`Block #${block.id} signature verification failed!`);
-              break;
-            }
-          } catch (_) {}
-        }
-      }
-
-      const isValid = manifestIntact && signatureValid && chainIntact && errors.length === 0;
+      const isValid = manifestIntact && signatureValid && issuerTrusted && chainIntact && errors.length === 0;
 
       let targetCaseId = ledger.caseId || sigJson.caseId || 'UNKNOWN';
       let caseTitle = '';

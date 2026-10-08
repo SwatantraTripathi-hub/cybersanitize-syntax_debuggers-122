@@ -66,6 +66,10 @@ export class ReportService {
     this.keypair = this.loadOrGenerateKeys();
   }
 
+  getPublicKey(): string {
+    return Buffer.from(this.keypair.publicKey).toString('hex');
+  }
+
   private loadOrGenerateKeys(): nacl.SignKeyPair {
     const keyPath = path.join(getUserDataPath(), 'enclave_ed25519_keys.json');
     const legacyPath = path.join(getUserDataPath(), 'tpm_silicon_keys.json');

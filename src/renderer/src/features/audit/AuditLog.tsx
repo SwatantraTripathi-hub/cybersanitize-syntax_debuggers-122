@@ -250,7 +250,9 @@ export default function AuditLog() {
             <div className="font-bold">
               {chainStatus.intact
                 ? `LEDGER INTEGRITY VERIFIED — All ${chainStatus.checkedBlocks} blocks form an unbroken cryptographic chain.`
-                : `TAMPERING DETECTED — Hash chain broken at Block #${chainStatus.brokenAtId}!`
+                : chainStatus.brokenAtId
+                  ? `TAMPERING DETECTED — Hash chain broken at Block #${chainStatus.brokenAtId}!`
+                  : 'TAMPERING DETECTED — The exported chain could not be authenticated.'
               }
             </div>
             {chainStatus.reason && <div className="mt-0.5 font-mono text-[10px] opacity-80">{chainStatus.reason}</div>}

@@ -25,10 +25,12 @@ export function registerReportIpc(auditService: AuditService) {
       const pdfBytes = fs.readFileSync(pdfPath);
       const sigData = JSON.parse(fs.readFileSync(signaturePath, 'utf8'));
       const isValid = reportService.verifySignature(pdfBytes, sigData.signature, sigData.publicKey);
+      const issuerTrusted = sigData.publicKey === reportService.getPublicKey();
       const hashCheck = reportService.verifyCertificateHash(pdfPath);
       return {
-        isValid: isValid && hashCheck.isValid,
+        isValid: isValid && issuerTrusted && hashCheck.isValid,
         signatureValid: isValid,
+        issuerTrusted,
         hashValid: hashCheck.isValid,
         expectedHash: hashCheck.expectedHash,
         actualHash: hashCheck.actualHash,
@@ -153,11 +155,13 @@ export function registerReportIpc(auditService: AuditService) {
         signatureValid = reportService.verifySignature(pdfBytes, sigData.evidenceSignature, sigData.publicKey, sigData.certDigest);
       }
       const hashValid = actualHash === sigData.pdfSha256;
+      const issuerTrusted = sigData.publicKey === reportService.getPublicKey();
       const boundCheck = reportService.verifyBoundEvidenceDigest(sigData);
       return {
         success: true,
-        isValid: (signatureValid || boundCheck.isValid) && hashValid,
+        isValid: (signatureValid || boundCheck.isValid) && issuerTrusted && hashValid,
         signatureValid: signatureValid || boundCheck.signatureValid,
+        issuerTrusted,
         hashValid,
         boundDigestValid: boundCheck.isValid,
         actualHash,
@@ -171,7 +175,7 @@ export function registerReportIpc(auditService: AuditService) {
         timestamp: sigData.timestamp,
         publicKey: sigData.publicKey,
         qrPayload: sigData.qrPayload || '',
-        errors: []
+        errors: issuerTrusted ? [] : ['Certificate was signed by an untrusted issuer key.']
       };
     } catch (e: any) {
       return { success: false, isValid: false, errors: [e.message] };

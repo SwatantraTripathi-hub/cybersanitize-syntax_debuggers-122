@@ -250,7 +250,7 @@ export const Dashboard: React.FC = () => {
           </button>
 
           <button
-            onClick={() => exportCase(activeCase)}
+            onClick={() => { void exportCase(activeCase) }}
             className="atlas-btn-secondary px-3 py-1.5 text-xs flex items-center gap-1.5 shadow-xs"
           >
             <Download className="w-3.5 h-3.5 text-atlas-forest" />

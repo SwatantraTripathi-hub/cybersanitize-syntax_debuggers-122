@@ -113,10 +113,10 @@ export const CaseModal: React.FC = () => {
     if (!file) return
 
     const reader = new FileReader()
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const parsed = JSON.parse(event.target?.result as string)
-        const result = importCase(parsed)
+        const result = await importCase(parsed)
         setImportFeedback(result)
         if (result.success) {
           setTimeout(() => {
@@ -132,11 +132,11 @@ export const CaseModal: React.FC = () => {
     reader.readAsText(file)
   }
 
-  const handlePasteImport = () => {
+  const handlePasteImport = async () => {
     if (!jsonInput.trim()) return
     try {
       const parsed = JSON.parse(jsonInput)
-      const result = importCase(parsed)
+      const result = await importCase(parsed)
       setImportFeedback(result)
       if (result.success) {
         setTimeout(() => {
@@ -256,7 +256,7 @@ export const CaseModal: React.FC = () => {
 
                       <div className="flex items-center gap-2 shrink-0">
                         <button
-                          onClick={() => exportCase(c)}
+                          onClick={() => { void exportCase(c) }}
                           className="p-2 rounded-lg border border-atlas-border hover:bg-atlas-bg text-atlas-muted hover:text-atlas-navy transition"
                           title="Export Workspace JSON"
                         >

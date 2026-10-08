@@ -26,6 +26,16 @@ export class VerificationServer {
   private port: number = 3847;
   private isRunning: boolean = false;
 
+  private getTrustedPublicKey(): string {
+    try {
+      const keyPath = path.join(getUserDataPath(), 'enclave_ed25519_keys.json');
+      const keys = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
+      return String(keys.publicKey || '');
+    } catch {
+      return '';
+    }
+  }
+
   start(preferredPort = 3847): Promise<number> {
     return new Promise((resolve) => {
       this.port = preferredPort;
@@ -323,6 +333,7 @@ export class VerificationServer {
       const pdfBytes = fs.readFileSync(targetPdfPath);
       const actualHash = crypto.createHash('sha256').update(pdfBytes).digest('hex');
       const hashValid = actualHash === targetSigData.pdfSha256;
+      const issuerTrusted = !!pubHex && pubHex === this.getTrustedPublicKey();
 
       let sigValid = false;
       const pubHex = targetSigData.publicKey;
@@ -359,7 +370,7 @@ export class VerificationServer {
       }
 
       // Overall validity: hash match is verified and signature is mathematically authenticated
-      const isValid = hashValid && sigValid;
+      const isValid = hashValid && sigValid && issuerTrusted;
 
       return {
         found: true,

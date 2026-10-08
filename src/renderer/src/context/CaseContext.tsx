@@ -74,8 +74,8 @@ interface CaseContextType {
   verifyOperator: () => void;
   setActiveCase: (caseRecord: CaseRecord) => void;
   createCase: (caseRecord: CaseRecord) => void;
-  importCase: (caseData: any) => { success: boolean; message: string; caseId?: string };
-  exportCase: (caseRecord?: CaseRecord) => void;
+  importCase: (caseData: any) => Promise<{ success: boolean; message: string; caseId?: string }>;
+  exportCase: (caseRecord?: CaseRecord) => Promise<void>;
   purgeHistory: () => Promise<void>;
   isCaseModalOpen: boolean;
   setIsCaseModalOpen: (open: boolean) => void;
@@ -535,11 +535,22 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setActiveCaseState(newCase);
   };
 
-  const importCase = (caseData: any): { success: boolean; message: string; caseId?: string } => {
+  const importCase = async (caseData: any): Promise<{ success: boolean; message: string; caseId?: string }> => {
     try {
-      const raw = caseData.caseMeta || caseData;
+      const raw = caseData.workspaceMeta || caseData.caseMeta || caseData;
       if (!raw.caseId || !raw.title) {
         return { success: false, message: 'Invalid format: missing Workspace ID or Title.' };
+      }
+
+      if (caseData.format === 'CYBERSANITIZE_ENTERPRISE_WORKSPACE_DOSSIER_V1') {
+        const suppliedSeal = String(caseData.chainOfCustodySeal || '');
+        const { chainOfCustodySeal: _ignored, ...unsignedPayload } = caseData;
+        const encoded = new TextEncoder().encode(JSON.stringify(unsignedPayload));
+        const digest = await crypto.subtle.digest('SHA-256', encoded);
+        const expectedSeal = `SHA256:${Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, '0')).join('')}`;
+        if (suppliedSeal !== expectedSeal) {
+          return { success: false, message: 'Workspace dossier signature mismatch. The JSON file was modified or is not a CyberSanitize export.' };
+        }
       }
 
       const imported: CaseRecord = {
@@ -563,9 +574,9 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const exportCase = (target?: CaseRecord) => {
+  const exportCase = async (target?: CaseRecord): Promise<void> => {
     const c = target || activeCase;
-    const exportPayload = {
+    const unsignedPayload = {
       format: 'CYBERSANITIZE_ENTERPRISE_WORKSPACE_DOSSIER_V1',
       exportedAt: new Date().toISOString(),
       administrator: {
@@ -578,8 +589,10 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
       },
       workspaceMeta: c,
       complianceStandard: 'ISO/IEC 27037:2012 & NIST SP 800-88 Rev. 1',
-      chainOfCustodySeal: `SHA256-SEAL-${Math.random().toString(36).substring(2, 10).toUpperCase()}`
     };
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(unsignedPayload)));
+    const chainOfCustodySeal = `SHA256:${Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, '0')).join('')}`;
+    const exportPayload = { ...unsignedPayload, chainOfCustodySeal };
 
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportPayload, null, 2));
     const downloadAnchor = document.createElement('a');
