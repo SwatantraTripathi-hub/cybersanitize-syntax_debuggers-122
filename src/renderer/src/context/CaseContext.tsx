@@ -402,6 +402,15 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
             return n;
           }));
+          setSelectedFleetNode(prev => prev && prev.id === realNode.nodeId ? {
+            ...prev,
+            status: 'IDLE',
+            progress: 100,
+            speed: '0 MB/s',
+            eta: 'Done',
+            preScanFindings: realNode.preScanFindings,
+            lastLog: realNode.lastLog || 'Pre-Scan Complete: Findings synchronized.'
+          } : prev);
         })
       );
     }
@@ -422,6 +431,14 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
             return n;
           }));
+          setSelectedFleetNode(prev => prev && prev.id === data.nodeId ? {
+            ...prev,
+            status: data.telemetry.phase || prev.status,
+            progress: data.telemetry.progress,
+            speed: data.telemetry.speed,
+            eta: data.telemetry.eta,
+            lastLog: data.telemetry.logLine
+          } : prev);
         })
       );
     }
@@ -443,6 +460,14 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
             return n;
           }));
+          setSelectedFleetNode(prev => prev && prev.id === data.nodeId ? {
+            ...prev,
+            status: data.result.operation === 'WIPE' ? 'VERIFIED' : 'IDLE',
+            progress: 100,
+            speed: '0 MB/s',
+            eta: 'Completed',
+            lastLog: data.result.summary
+          } : prev);
         })
       );
     }
@@ -755,27 +780,6 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }));
 
-    setTimeout(() => {
-      setConnectedNodes(prev => prev.map(node => {
-        if (!node.selected) return node;
-        return {
-          ...node,
-          status: 'IDLE',
-          progress: 100,
-          speed: '0 MB/s',
-          eta: 'Done',
-          preScanFindings: {
-            filesFound: node.id === 'node-02' ? 14200 : 3840,
-            docs: node.id === 'node-02' ? 4200 : 920,
-            media: node.id === 'node-02' ? 8900 : 2600,
-            databases: node.id === 'node-02' ? 1100 : 320,
-            entropy: 7.42,
-            safeToWipe: true
-          },
-          lastLog: 'Pre-Scan Complete: Active storage inventory cataloged. 100% ready for batch action.'
-        };
-      }));
-    }, 2500);
   };
 
   const dispatchBatchWipe = (standard = 'nist-clear') => {
@@ -797,26 +801,6 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }));
 
-    // Progressive animation
-    const intervals = [25, 55, 80, 100];
-    intervals.forEach((pct, idx) => {
-      setTimeout(() => {
-        setConnectedNodes(prev => prev.map(node => {
-          if (!node.selected || node.status !== 'SANITIZING') return node;
-          const isFinished = pct === 100;
-          return {
-            ...node,
-            status: isFinished ? 'VERIFIED' : 'SANITIZING',
-            progress: pct,
-            speed: isFinished ? '0 MB/s' : `${(450 + Math.random() * 50).toFixed(0)} MB/s`,
-            eta: isFinished ? 'Completed' : `${Math.max(1, 4 - idx)}m`,
-            lastLog: isFinished
-              ? `Verified NIST SP 800-88 Sanitized (Shannon Entropy H(X) = 0.0000). Sealed in Ledger.`
-              : `Pass 1 of 1 Streaming: Overwritten ${pct}% of physical sectors...`
-          };
-        }));
-      }, (idx + 1) * 2000);
-    });
   };
 
   const dispatchBatchRecovery = (types = ['DOCX', 'PDF', 'SQLITE']) => {
@@ -838,19 +822,6 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }));
 
-    setTimeout(() => {
-      setConnectedNodes(prev => prev.map(node => {
-        if (!node.selected || node.status !== 'RECOVERING') return node;
-        return {
-          ...node,
-          status: 'IDLE',
-          progress: 100,
-          speed: '0 MB/s',
-          eta: 'Completed',
-          lastLog: 'Recovery Complete: 42 documents reconstructed with valid SHA-256 signatures.'
-        };
-      }));
-    }, 4000);
   };
 
   const selectFleetNodeForEngine = (node: FleetNode) => {
