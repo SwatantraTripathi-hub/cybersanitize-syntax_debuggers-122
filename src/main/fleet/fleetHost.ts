@@ -10,11 +10,11 @@
  * can forward real-time updates to the renderer process.
  */
 
-import { EventEmitter } from 'node:events'
-import { WebSocketServer, WebSocket } from 'ws'
-import type { IncomingMessage } from 'node:http'
-import type { Socket as DatagramSocket } from 'node:dgram'
-import { startFleetDiscoveryResponder } from './fleetDiscovery'
+import { EventEmitter } from "node:events";
+import { WebSocketServer, WebSocket } from "ws";
+import type { IncomingMessage } from "node:http";
+import type { Socket as DatagramSocket } from "node:dgram";
+import { startFleetDiscoveryResponder } from "./fleetDiscovery";
 import {
   FleetMessageType,
   type FleetPacket,
@@ -25,43 +25,55 @@ import {
   type FleetWorkspaceMeta,
   type JobCompletePayload,
   type ExecuteWipePayload,
-  type ExecuteRecoveryPayload
-} from './lobbyProtocol'
+  type ExecuteRecoveryPayload,
+} from "./lobbyProtocol";
 
 export interface FleetHostEvents {
-  'node:joined': (node: ConnectedNode) => void
-  'node:prescan_ready': (node: ConnectedNode) => void
-  'node:telemetry': (data: { nodeId: string; telemetry: TelemetryPayload }) => void
-  'node:completed': (data: { nodeId: string; result: JobCompletePayload }) => void
-  'node:disconnected': (nodeId: string) => void
-  'host:started': (port: number) => void
-  'host:stopped': () => void
-  'host:error': (err: Error) => void
+  "node:joined": (node: ConnectedNode) => void;
+  "node:prescan_ready": (node: ConnectedNode) => void;
+  "node:telemetry": (data: {
+    nodeId: string;
+    telemetry: TelemetryPayload;
+  }) => void;
+  "node:completed": (data: {
+    nodeId: string;
+    result: JobCompletePayload;
+  }) => void;
+  "node:disconnected": (nodeId: string) => void;
+  "host:started": (port: number) => void;
+  "host:stopped": () => void;
+  "host:error": (err: Error) => void;
 }
 
 declare interface FleetHost {
-  on<K extends keyof FleetHostEvents>(event: K, listener: FleetHostEvents[K]): this
-  emit<K extends keyof FleetHostEvents>(event: K, ...args: Parameters<FleetHostEvents[K]>): boolean
+  on<K extends keyof FleetHostEvents>(
+    event: K,
+    listener: FleetHostEvents[K],
+  ): this;
+  emit<K extends keyof FleetHostEvents>(
+    event: K,
+    ...args: Parameters<FleetHostEvents[K]>
+  ): boolean;
 }
 
 class FleetHost extends EventEmitter {
-  private wss: WebSocketServer | null = null
-  private discoverySocket: DatagramSocket | null = null
-  private nodes: Map<string, ConnectedNode> = new Map()
-  private sockets: Map<string, WebSocket> = new Map()
-  private activeRoomKey: string = ''
-  private port: number = 4096
-  private activeWorkspaceMeta: FleetWorkspaceMeta | null = null
+  private wss: WebSocketServer | null = null;
+  private discoverySocket: DatagramSocket | null = null;
+  private nodes: Map<string, ConnectedNode> = new Map();
+  private sockets: Map<string, WebSocket> = new Map();
+  private activeRoomKey: string = "";
+  private port: number = 4096;
+  private activeWorkspaceMeta: FleetWorkspaceMeta | null = null;
 
   /**
    * Set active workspace configuration metadata for joining nodes.
    */
   setWorkspaceMeta(meta: FleetWorkspaceMeta): void {
-    this.activeWorkspaceMeta = meta
+    this.activeWorkspaceMeta = meta;
   }
 
   getWorkspaceMeta(): FleetWorkspaceMeta | null {
-    return this.activeWorkspaceMeta
+    return this.activeWorkspaceMeta;
   }
 
   /**
@@ -69,89 +81,97 @@ class FleetHost extends EventEmitter {
    */
   createLobby(port = 4096): Promise<string> {
     if (this.wss) {
-      this.closeLobby()
+      this.closeLobby();
     }
 
-    this.port = port
-    this.activeRoomKey = `CS-FLEET-${Math.floor(1000 + Math.random() * 9000)}`
+    this.port = port;
+    this.activeRoomKey = `CS-FLEET-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    this.wss = new WebSocketServer({ port, host: '0.0.0.0' })
+    this.wss = new WebSocketServer({ port, host: "0.0.0.0" });
 
-    this.wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
-      const clientIp = req.socket.remoteAddress ?? '0.0.0.0'
-      console.log(`[FleetHost] New connection from ${clientIp}`)
-      this._handleConnection(ws, clientIp)
-    })
+    this.wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
+      const clientIp = req.socket.remoteAddress ?? "0.0.0.0";
+      console.log(`[FleetHost] New connection from ${clientIp}`);
+      this._handleConnection(ws, clientIp);
+    });
 
-    this.wss.on('error', (err: Error) => {
-      console.error('[FleetHost] Server error:', err.message)
-      this.emit('host:error', err)
-    })
+    this.wss.on("error", (err: Error) => {
+      console.error("[FleetHost] Server error:", err.message);
+      this.emit("host:error", err);
+    });
 
-    this.wss.on('listening', () => {
-      console.log(`[FleetHost] Listening on ws://0.0.0.0:${port} — Room: ${this.activeRoomKey}`)
-      this.emit('host:started', port)
-    })
+    this.wss.on("listening", () => {
+      console.log(
+        `[FleetHost] Listening on ws://0.0.0.0:${port} — Room: ${this.activeRoomKey}`,
+      );
+      this.emit("host:started", port);
+    });
 
     return new Promise((resolve, reject) => {
-      const server = this.wss
+      const server = this.wss;
       if (!server) {
-        reject(new Error('Fleet host server failed to initialize.'))
-        return
+        reject(new Error("Fleet host server failed to initialize."));
+        return;
       }
 
       const onListening = () => {
-        server.removeListener('error', onStartupError)
+        server.removeListener("error", onStartupError);
         void startFleetDiscoveryResponder(
           () => this.activeRoomKey,
-          () => this.port
-        ).then((socket) => {
-          this.discoverySocket = socket
-          resolve(this.activeRoomKey)
-        }).catch((error: Error) => {
-          this.closeLobby()
-          reject(error)
-        })
-      }
+          () => this.port,
+        )
+          .then((socket) => {
+            this.discoverySocket = socket;
+            resolve(this.activeRoomKey);
+          })
+          .catch((error: Error) => {
+            this.closeLobby();
+            reject(error);
+          });
+      };
       const onStartupError = (err: Error) => {
-        server.removeListener('listening', onListening)
-        this.wss = null
-        reject(err)
-      }
+        server.removeListener("listening", onListening);
+        this.wss = null;
+        reject(err);
+      };
 
-      server.once('listening', onListening)
-      server.once('error', onStartupError)
-    })
+      server.once("listening", onListening);
+      server.once("error", onStartupError);
+    });
   }
 
   /**
    * Handle an individual WebSocket connection lifecycle.
    */
   private _handleConnection(ws: WebSocket, clientIp: string): void {
-    let registeredNodeId: string | null = null
+    let registeredNodeId: string | null = null;
 
-    ws.on('message', (raw: Buffer | string) => {
+    ws.on("message", (raw: Buffer | string) => {
       try {
-        const packet: FleetPacket = JSON.parse(raw.toString())
+        const packet: FleetPacket = JSON.parse(raw.toString());
 
         switch (packet.type) {
           case FleetMessageType.JOIN_ROOM: {
-            const payload = packet.payload as JoinRoomPayload
+            const payload = packet.payload as JoinRoomPayload;
 
             // Reject if room key doesn't match
             if (packet.roomKey !== this.activeRoomKey) {
               this._send(ws, {
                 type: FleetMessageType.ROOM_REJECTED,
-                nodeId: 'host',
+                nodeId: "host",
                 roomKey: this.activeRoomKey,
                 timestamp: new Date().toISOString(),
-                payload: { reason: 'Invalid room key' }
-              })
-              ws.close()
-              return
+                payload: { reason: "Invalid room key" },
+              });
+              ws.close();
+              return;
             }
 
-            registeredNodeId = payload.nodeId
+            registeredNodeId = payload.nodeId;
+            const previousSocket = this.sockets.get(payload.nodeId);
+            if (previousSocket && previousSocket !== ws) {
+              previousSocket.terminate();
+            }
             const node: ConnectedNode = {
               nodeId: payload.nodeId,
               hostname: payload.hostname,
@@ -161,178 +181,193 @@ class FleetHost extends EventEmitter {
               storage: payload.storage,
               platform: payload.platform,
               connectedAt: new Date().toISOString(),
-              status: 'ONLINE',
+              status: "ONLINE",
               progress: 0,
-              speed: '0 MB/s',
-              eta: '--',
-              lastLog: `Connected from ${clientIp} over local LAN WebSocket.`
-            }
+              speed: "0 MB/s",
+              eta: "--",
+              lastLog: `Connected from ${clientIp} over local LAN WebSocket.`,
+            };
 
-            this.nodes.set(payload.nodeId, node)
-            this.sockets.set(payload.nodeId, ws)
+            this.nodes.set(payload.nodeId, node);
+            this.sockets.set(payload.nodeId, ws);
 
             // Acknowledge with full workspace metadata and central configuration
             this._send(ws, {
               type: FleetMessageType.ROOM_ACCEPTED,
-              nodeId: 'host',
+              nodeId: "host",
               roomKey: this.activeRoomKey,
               timestamp: new Date().toISOString(),
               payload: {
                 roomKey: this.activeRoomKey,
-                hostVersion: '1.0.0',
+                hostVersion: "1.0.0",
                 connectedPeers: this.nodes.size,
                 workspaceMeta: this.activeWorkspaceMeta || {
                   caseId: `FLEET-${this.activeRoomKey}`,
-                  title: 'Central Fleet Mesh Workspace',
+                  title: "Central Fleet Mesh Workspace",
                   evidenceTag: `AST-${this.activeRoomKey}`,
-                  authorizingOfficer: 'Lead Administrator / Central Fleet Hub',
-                  date: new Date().toISOString().split('T')[0],
-                  notes: 'Air-gapped multi-device fleet workspace orchestrating parallel client workstations.',
-                  classification: 'ENTERPRISE FLEET / NIST 800-88 REV 1',
+                  authorizingOfficer: "Lead Administrator / Central Fleet Hub",
+                  date: new Date().toISOString().split("T")[0],
+                  notes:
+                    "Air-gapped multi-device fleet workspace orchestrating parallel client workstations.",
+                  classification: "ENTERPRISE FLEET / NIST 800-88 REV 1",
                   selectedOptions: {
-                    wipeStandard: 'nist-clear',
-                    recoveryTypes: ['DOCX', 'PDF', 'SQLITE'],
+                    wipeStandard: "nist-clear",
+                    recoveryTypes: ["DOCX", "PDF", "SQLITE"],
                     writeBlockerEnforced: true,
-                    preScanEnabled: true
-                  }
-                }
-              }
-            })
+                    preScanEnabled: true,
+                  },
+                },
+              },
+            });
 
-            this.emit('node:joined', node)
-            console.log(`[FleetHost] Node joined: ${payload.hostname} (${payload.nodeId})`)
-            break
+            this.emit("node:joined", node);
+            console.log(
+              `[FleetHost] Node joined: ${payload.hostname} (${payload.nodeId})`,
+            );
+            break;
           }
 
           case FleetMessageType.TELEMETRY: {
-            if (!registeredNodeId) break
-            const telemetry = packet.payload as TelemetryPayload
-            const node = this.nodes.get(registeredNodeId)
+            if (!registeredNodeId) break;
+            const telemetry = packet.payload as TelemetryPayload;
+            const node = this.nodes.get(registeredNodeId);
             if (node) {
-              node.progress = telemetry.progress
-              node.speed = telemetry.speed
-              node.eta = telemetry.eta
-              node.lastLog = telemetry.logLine
-              node.status = telemetry.phase as ConnectedNode['status']
-              this.nodes.set(registeredNodeId, node)
+              node.progress = telemetry.progress;
+              node.speed = telemetry.speed;
+              node.eta = telemetry.eta;
+              node.lastLog = telemetry.logLine;
+              node.status = telemetry.phase as ConnectedNode["status"];
+              this.nodes.set(registeredNodeId, node);
             }
-            this.emit('node:telemetry', { nodeId: registeredNodeId, telemetry })
-            break
+            this.emit("node:telemetry", {
+              nodeId: registeredNodeId,
+              telemetry,
+            });
+            break;
           }
 
           case FleetMessageType.PRE_SCAN_RESULT: {
-            if (!registeredNodeId) break
-            const findings = packet.payload as PreScanFindingsPayload
-            const node = this.nodes.get(registeredNodeId)
+            if (!registeredNodeId) break;
+            const findings = packet.payload as PreScanFindingsPayload;
+            const node = this.nodes.get(registeredNodeId);
             if (node) {
-              node.preScanFindings = findings
-              node.status = 'IDLE'
-              node.progress = 100
-              node.lastLog = 'Pre-Scan Complete: Inventory cataloged.'
-              this.nodes.set(registeredNodeId, node)
+              node.preScanFindings = findings;
+              node.status = "IDLE";
+              node.progress = 100;
+              node.lastLog = "Pre-Scan Complete: Inventory cataloged.";
+              this.nodes.set(registeredNodeId, node);
             }
-            this.emit('node:prescan_ready', this.nodes.get(registeredNodeId) ?? node!)
-            break
+            this.emit(
+              "node:prescan_ready",
+              this.nodes.get(registeredNodeId) ?? node!,
+            );
+            break;
           }
 
           case FleetMessageType.JOB_COMPLETE: {
-            if (!registeredNodeId) break
-            const result = packet.payload as JobCompletePayload
-            const node = this.nodes.get(registeredNodeId)
+            if (!registeredNodeId) break;
+            const result = packet.payload as JobCompletePayload;
+            const node = this.nodes.get(registeredNodeId);
             if (node) {
-              node.status = result.operation === 'WIPE' ? 'VERIFIED' : 'IDLE'
-              node.progress = 100
-              node.speed = '0 MB/s'
-              node.eta = 'Completed'
-              node.lastLog = result.summary
-              this.nodes.set(registeredNodeId, node)
+              node.status = result.operation === "WIPE" ? "VERIFIED" : "IDLE";
+              node.progress = 100;
+              node.speed = "0 MB/s";
+              node.eta = "Completed";
+              node.lastLog = result.summary;
+              this.nodes.set(registeredNodeId, node);
             }
-            this.emit('node:completed', { nodeId: registeredNodeId, result })
-            break
+            this.emit("node:completed", { nodeId: registeredNodeId, result });
+            break;
           }
 
           case FleetMessageType.HEARTBEAT: {
             // Respond to keep connections alive
             this._send(ws, {
               type: FleetMessageType.HEARTBEAT,
-              nodeId: 'host',
+              nodeId: "host",
               roomKey: this.activeRoomKey,
               timestamp: new Date().toISOString(),
-              payload: {}
-            })
-            break
+              payload: {},
+            });
+            break;
           }
 
           default:
-            console.warn(`[FleetHost] Unknown message type: ${packet.type}`)
+            console.warn(`[FleetHost] Unknown message type: ${packet.type}`);
         }
       } catch (err) {
-        console.error('[FleetHost] Failed to parse packet:', err)
+        console.error("[FleetHost] Failed to parse packet:", err);
       }
-    })
+    });
 
-    ws.on('close', () => {
-      if (registeredNodeId) {
-        this.nodes.delete(registeredNodeId)
-        this.sockets.delete(registeredNodeId)
-        this.emit('node:disconnected', registeredNodeId)
-        console.log(`[FleetHost] Node disconnected: ${registeredNodeId}`)
+    ws.on("close", () => {
+      if (registeredNodeId && this.sockets.get(registeredNodeId) === ws) {
+        this.nodes.delete(registeredNodeId);
+        this.sockets.delete(registeredNodeId);
+        this.emit("node:disconnected", registeredNodeId);
+        console.log(`[FleetHost] Node disconnected: ${registeredNodeId}`);
       }
-    })
+    });
 
-    ws.on('error', (err: Error) => {
-      console.warn(`[FleetHost] Socket error for ${registeredNodeId}: ${err.message}`)
-    })
+    ws.on("error", (err: Error) => {
+      console.warn(
+        `[FleetHost] Socket error for ${registeredNodeId}: ${err.message}`,
+      );
+    });
   }
 
   /**
    * Broadcast a PRE_SCAN_REQ to all connected (selected) nodes.
    */
   broadcastPreScan(nodeIds?: string[]): void {
-    this._broadcastToNodes(
-      nodeIds,
-      FleetMessageType.PRE_SCAN_REQ,
-      {}
-    )
-    console.log(`[FleetHost] Pre-scan request broadcast to ${nodeIds?.length ?? this.nodes.size} nodes`)
+    this._broadcastToNodes(nodeIds, FleetMessageType.PRE_SCAN_REQ, {});
+    console.log(
+      `[FleetHost] Pre-scan request broadcast to ${nodeIds?.length ?? this.nodes.size} nodes`,
+    );
   }
 
   /**
    * Broadcast an EXEC_WIPE command to selected nodes.
    */
   broadcastWipe(standard: string, nodeIds?: string[]): void {
-    const payload: ExecuteWipePayload = { standard }
-    this._broadcastToNodes(nodeIds, FleetMessageType.EXEC_WIPE, payload)
-    console.log(`[FleetHost] Wipe (${standard}) broadcast to ${nodeIds?.length ?? this.nodes.size} nodes`)
+    const payload: ExecuteWipePayload = { standard };
+    this._broadcastToNodes(nodeIds, FleetMessageType.EXEC_WIPE, payload);
+    console.log(
+      `[FleetHost] Wipe (${standard}) broadcast to ${nodeIds?.length ?? this.nodes.size} nodes`,
+    );
   }
 
   /**
    * Broadcast an EXEC_RECOVERY command to selected nodes.
    */
   broadcastRecovery(fileTypes: string[], nodeIds?: string[]): void {
-    const payload: ExecuteRecoveryPayload = { fileTypes }
-    this._broadcastToNodes(nodeIds, FleetMessageType.EXEC_RECOVERY, payload)
+    const payload: ExecuteRecoveryPayload = { fileTypes };
+    this._broadcastToNodes(nodeIds, FleetMessageType.EXEC_RECOVERY, payload);
   }
 
   /**
    * Broadcast a message to all nodes (or a subset by nodeId).
    */
-  private _broadcastToNodes(nodeIds: string[] | undefined, type: FleetMessageType, payload: unknown): void {
+  private _broadcastToNodes(
+    nodeIds: string[] | undefined,
+    type: FleetMessageType,
+    payload: unknown,
+  ): void {
     const targets = nodeIds
       ? [...this.sockets.entries()].filter(([id]) => nodeIds.includes(id))
-      : [...this.sockets.entries()]
+      : [...this.sockets.entries()];
 
     for (const [nodeId, ws] of targets) {
       if (ws.readyState === WebSocket.OPEN) {
         this._send(ws, {
           type,
-          nodeId: 'host',
+          nodeId: "host",
           roomKey: this.activeRoomKey,
           timestamp: new Date().toISOString(),
-          payload
-        })
+          payload,
+        });
       } else {
-        console.warn(`[FleetHost] Skipping closed socket for node ${nodeId}`)
+        console.warn(`[FleetHost] Skipping closed socket for node ${nodeId}`);
       }
     }
   }
@@ -342,7 +377,7 @@ class FleetHost extends EventEmitter {
    */
   private _send(ws: WebSocket, packet: FleetPacket): void {
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(packet))
+      ws.send(JSON.stringify(packet));
     }
   }
 
@@ -350,28 +385,28 @@ class FleetHost extends EventEmitter {
    * Get all currently connected nodes as an array.
    */
   getConnectedNodes(): ConnectedNode[] {
-    return Array.from(this.nodes.values())
+    return Array.from(this.nodes.values());
   }
 
   /**
    * Get a single node by ID.
    */
   getNode(nodeId: string): ConnectedNode | undefined {
-    return this.nodes.get(nodeId)
+    return this.nodes.get(nodeId);
   }
 
   /**
    * Get the current room key.
    */
   getRoomKey(): string {
-    return this.activeRoomKey
+    return this.activeRoomKey;
   }
 
   /**
    * Get the active port.
    */
   getPort(): number {
-    return this.port
+    return this.port;
   }
 
   /**
@@ -379,8 +414,8 @@ class FleetHost extends EventEmitter {
    */
   closeLobby(): void {
     if (this.discoverySocket) {
-      this.discoverySocket.close()
-      this.discoverySocket = null
+      this.discoverySocket.close();
+      this.discoverySocket = null;
     }
 
     if (this.wss) {
@@ -389,28 +424,28 @@ class FleetHost extends EventEmitter {
         try {
           this._send(ws, {
             type: FleetMessageType.DISCONNECT,
-            nodeId: 'host',
+            nodeId: "host",
             roomKey: this.activeRoomKey,
             timestamp: new Date().toISOString(),
-            payload: { reason: 'Host closing lobby' }
-          })
-          ws.terminate()
+            payload: { reason: "Host closing lobby" },
+          });
+          ws.terminate();
         } catch {
           // ignore close errors
         }
-        this.emit('node:disconnected', nodeId)
+        this.emit("node:disconnected", nodeId);
       }
 
       this.wss.close(() => {
-        console.log('[FleetHost] Server closed.')
-        this.emit('host:stopped')
-      })
+        console.log("[FleetHost] Server closed.");
+        this.emit("host:stopped");
+      });
 
-      this.wss = null
-      this.nodes.clear()
-      this.sockets.clear()
-      this.activeRoomKey = ''
-      this.activeWorkspaceMeta = null
+      this.wss = null;
+      this.nodes.clear();
+      this.sockets.clear();
+      this.activeRoomKey = "";
+      this.activeWorkspaceMeta = null;
     }
   }
 
@@ -418,10 +453,9 @@ class FleetHost extends EventEmitter {
    * Check if the host is currently running.
    */
   isRunning(): boolean {
-    return this.wss !== null
+    return this.wss !== null;
   }
 }
 
-export { FleetHost }
-export default FleetHost
-
+export { FleetHost };
+export default FleetHost;
