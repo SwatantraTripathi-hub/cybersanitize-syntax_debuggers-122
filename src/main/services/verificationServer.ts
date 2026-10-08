@@ -89,12 +89,23 @@ export class VerificationServer {
     if (pathname === '/verify') {
       const dataPayload = (parsed.query.data || parsed.query.payload || '') as string;
       const certRef = (parsed.query.ref || parsed.query.id || '') as string;
-      let result;
-      if (dataPayload) {
-        result = this.verifyCertificateByPayload(dataPayload);
-      } else {
-        result = this.verifyCertificateByQuery(certRef);
-      }
+      const result = dataPayload
+        ? {
+            found: false,
+            valid: false,
+            certRef: '',
+            caseId: '',
+            tagId: '',
+            title: '',
+            certDigest: '',
+            operatorId: '',
+            timestamp: '',
+            pdfSha256: '',
+            publicKey: '',
+            signature: '',
+            error: 'Payload verification is disabled. Scan a LAN certificate URL with its certificate reference.'
+          }
+        : this.verifyCertificateByQuery(certRef);
       this.renderVerificationHtml(res, result);
       return;
     }
@@ -292,8 +303,8 @@ export class VerificationServer {
         }
       }
 
-      // Fallback: if query specified but no exact match, pick the most recent valid report
-      if (!targetPdfPath && files.length > 0) {
+      // Never substitute another certificate for an explicitly requested reference.
+      if (!targetPdfPath && !cleanQuery && files.length > 0) {
         const fallbackPdf = path.join(reportsDir, files[0]);
         const fallbackSig = fallbackPdf + '.sig';
         if (fs.existsSync(fallbackSig)) {
@@ -348,7 +359,7 @@ export class VerificationServer {
       }
 
       // Overall validity: hash match is verified and signature is mathematically authenticated
-      const isValid = hashValid && (sigValid || !!targetSigData.certDigest);
+      const isValid = hashValid && sigValid;
 
       return {
         found: true,

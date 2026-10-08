@@ -32,7 +32,7 @@ function getTempPath(): string {
 export interface AuditEntry {
   id?: number;
   timestamp: string;
-  operation: 'DRIVE_WIPE' | 'FILE_ERASE' | 'FILE_RECOVERY' | 'WRITE_BLOCKER_VERIFIED' | 'EVIDENCE_IMPORT';
+  operation: 'DRIVE_WIPE' | 'FILE_ERASE' | 'FILE_RECOVERY' | 'WRITE_BLOCKER_VERIFIED' | 'EVIDENCE_IMPORT' | 'FLEET_ATTESTATION';
   target: string;
   details: any;
   status: 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'VERIFIED';
@@ -52,6 +52,33 @@ export interface ChainVerificationResult {
   brokenAtId?: number;
   brokenAtIndex?: number;
   reason?: string;
+}
+
+function verifyEntries(entries: AuditEntry[], publicKeyHex: string): ChainVerificationResult {
+  if (entries.length === 0) return { intact: true, checkedBlocks: 0 };
+  let expectedPrevHash = GENESIS_HASH;
+  const publicKey = new Uint8Array(Buffer.from(publicKeyHex, 'hex'));
+
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    if (entry.id !== i + 1 || entry.prev_hash !== expectedPrevHash) {
+      return { intact: false, checkedBlocks: i, brokenAtId: entry.id, brokenAtIndex: i + 1, reason: 'Ledger sequence or previous-hash linkage is invalid.' };
+    }
+    const recomputed = computeEntryHash({ ...entry, id: entry.id!, prev_hash: entry.prev_hash! });
+    if (!entry.entry_hash || recomputed !== entry.entry_hash) {
+      return { intact: false, checkedBlocks: i, brokenAtId: entry.id, brokenAtIndex: i + 1, reason: 'Ledger entry hash does not match its stored data.' };
+    }
+    try {
+      const signature = new Uint8Array(Buffer.from(entry.signature || '', 'hex'));
+      if (!nacl.sign.detached.verify(Buffer.from(entry.entry_hash, 'hex'), signature, publicKey)) {
+        return { intact: false, checkedBlocks: i, brokenAtId: entry.id, brokenAtIndex: i + 1, reason: 'Ledger entry signature is invalid.' };
+      }
+    } catch (_) {
+      return { intact: false, checkedBlocks: i, brokenAtId: entry.id, brokenAtIndex: i + 1, reason: 'Ledger entry signature is malformed.' };
+    }
+    expectedPrevHash = entry.entry_hash;
+  }
+  return { intact: true, checkedBlocks: entries.length };
 }
 
 const GENESIS_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
@@ -79,12 +106,23 @@ export class AuditService {
   private customDbPath: string | null = null;
   private jsonFallbackPath: string = '';
   private keypair: nacl.SignKeyPair;
+  private serviceContext: { getAuditRepository: () => Promise<any> } | null = null;
 
-  constructor(dbPath?: string) {
+  constructor(dbPathOrContext?: string | { userDataDir?: string }) {
+    if (typeof dbPathOrContext === 'object' && dbPathOrContext && 'getAuditRepository' in dbPathOrContext) {
+      this.serviceContext = dbPathOrContext as { getAuditRepository: () => Promise<any> };
+    }
+    const dbPath = typeof dbPathOrContext === 'string'
+      ? dbPathOrContext
+      : dbPathOrContext?.userDataDir
+        ? path.join(dbPathOrContext.userDataDir, 'audit.db')
+        : undefined;
     if (dbPath) this.customDbPath = dbPath;
-    this.jsonFallbackPath = path.join(getUserDataPath(), 'audit_logs_fallback.json');
+    this.jsonFallbackPath = dbPath
+      ? `${dbPath}.fallback.json`
+      : path.join(getUserDataPath(), 'audit_logs_fallback.json');
     this.keypair = this.loadOrGenerateAuditKeys();
-    this.initDb();
+    if (!this.serviceContext) this.initDb();
   }
 
   private loadOrGenerateAuditKeys(): nacl.SignKeyPair {
@@ -273,6 +311,13 @@ export class AuditService {
     }
   }
 
+  close(): void {
+    if (this.db) {
+      this.db.close();
+      this.db = null;
+    }
+  }
+
   logOperation(entry: AuditEntry): number {
     console.log(`[AuditService] Logging operation: ${entry.operation} on target: ${entry.target}`);
     const prevHash = this.getLastEntryHash();
@@ -330,6 +375,50 @@ export class AuditService {
 
     console.log(`[AuditService] Chained block #${id} created. entry_hash: ${entryHash.slice(0, 16)}...`);
     return id;
+  }
+
+  async recordOperation(input: {
+    case_id: string;
+    operation: AuditEntry['operation'];
+    target: string;
+    status: AuditEntry['status'];
+    operator: string;
+    timestamp?: string;
+    details?: Record<string, unknown>;
+    hash_before?: string | null;
+    hash_after?: string | null;
+    verification_result?: Record<string, unknown> | null;
+  }): Promise<AuditEntry & { case_id: string }> {
+    if (this.serviceContext) {
+      const repository = await this.serviceContext.getAuditRepository();
+      const record = repository.append({
+        case_id: input.case_id,
+        timestamp: input.timestamp,
+        operation: input.operation,
+        target: input.target,
+        details: input.details || {},
+        status: input.status,
+        operator: input.operator,
+        hash_before: input.hash_before || null,
+        hash_after: input.hash_after || null,
+        verification_result: input.verification_result || null
+      });
+      return record as AuditEntry & { case_id: string };
+    }
+    const id = this.logOperation({
+      timestamp: input.timestamp || new Date().toISOString(),
+      operation: input.operation,
+      target: input.target,
+      details: { ...(input.details || {}), caseId: input.case_id },
+      status: input.status,
+      operator: input.operator,
+      hash_before: input.hash_before || null,
+      hash_after: input.hash_after || null,
+      verification_result: input.verification_result || null
+    });
+    const entry = this.getOperationById(id);
+    if (!entry) throw new Error(`Audit entry ${id} was not persisted`);
+    return { ...entry, case_id: input.case_id };
   }
 
   updateOperation(id: number, updates: Partial<AuditEntry>): void {
@@ -406,26 +495,18 @@ export class AuditService {
       return res.slice(offset, offset + limit);
     }
 
-    let query = 'SELECT * FROM audit_logs';
-    const params: any[] = [];
-    const conditions: string[] = [];
-    if (filter?.caseId) {
-      conditions.push('details LIKE ?');
-      params.push(`%"caseId":"${filter.caseId}"%`);
-    }
-    if (filter?.operation) {
-      conditions.push('operation = ?');
-      params.push(filter.operation);
-    }
-    if (filter?.status) {
-      conditions.push('status = ?');
-      params.push(filter.status);
-    }
-    if (conditions.length > 0) query += ` WHERE ${conditions.join(' AND ')}`;
-    query += ' ORDER BY timestamp DESC LIMIT ? OFFSET ?';
-    params.push(limit, offset);
-    const rows = this.db.prepare(query).all(...params);
-    return rows.map((r: any) => this.parseRow(r));
+    const rows = this.db.prepare('SELECT * FROM audit_logs ORDER BY timestamp DESC').all()
+      .map((r: any) => this.parseRow(r))
+      .filter((entry: AuditEntry) => {
+        const details = typeof entry.details === 'object' && entry.details !== null
+          ? entry.details
+          : {};
+        if (filter?.caseId && details.caseId !== filter.caseId) return false;
+        if (filter?.operation && entry.operation !== filter.operation) return false;
+        if (filter?.status && entry.status !== filter.status) return false;
+        return true;
+      });
+    return rows.slice(offset, offset + limit);
   }
 
   getOperationById(id: number): AuditEntry | null {
@@ -435,35 +516,12 @@ export class AuditService {
   }
 
   getStats(caseId?: string): any {
-    if (this.isInMemory) {
-      let logs = this.memoryLogs;
-      if (caseId) {
-        logs = logs.filter(l => {
-          const d = typeof l.details === 'object' ? l.details : JSON.parse(l.details || '{}');
-          return d.caseId === caseId;
-        });
-      }
-      return {
-        total: logs.length,
-        wipes: logs.filter(l => l.operation === 'DRIVE_WIPE').length,
-        erases: logs.filter(l => l.operation === 'FILE_ERASE').length,
-        carves: logs.filter(l => l.operation === 'FILE_RECOVERY').length
-      };
-    }
-    if (caseId) {
-      const param = `%"caseId":"${caseId}"%`;
-      return {
-        total: this.db.prepare('SELECT COUNT(*) as c FROM audit_logs WHERE details LIKE ?').get(param).c,
-        wipes: this.db.prepare("SELECT COUNT(*) as c FROM audit_logs WHERE operation = 'DRIVE_WIPE' AND details LIKE ?").get(param).c,
-        erases: this.db.prepare("SELECT COUNT(*) as c FROM audit_logs WHERE operation = 'FILE_ERASE' AND details LIKE ?").get(param).c,
-        carves: this.db.prepare("SELECT COUNT(*) as c FROM audit_logs WHERE operation = 'FILE_RECOVERY' AND details LIKE ?").get(param).c
-      };
-    }
+    const logs = this.getOperations(100000, 0, caseId ? { caseId } : undefined);
     return {
-      total: this.db.prepare('SELECT COUNT(*) as c FROM audit_logs').get().c,
-      wipes: this.db.prepare("SELECT COUNT(*) as c FROM audit_logs WHERE operation = 'DRIVE_WIPE'").get().c,
-      erases: this.db.prepare("SELECT COUNT(*) as c FROM audit_logs WHERE operation = 'FILE_ERASE'").get().c,
-      carves: this.db.prepare("SELECT COUNT(*) as c FROM audit_logs WHERE operation = 'FILE_RECOVERY'").get().c
+      total: logs.length,
+      wipes: logs.filter(l => l.operation === 'DRIVE_WIPE').length,
+      erases: logs.filter(l => l.operation === 'FILE_ERASE').length,
+      carves: logs.filter(l => l.operation === 'FILE_RECOVERY').length
     };
   }
 
@@ -472,12 +530,6 @@ export class AuditService {
    * Returns a ChainVerificationResult indicating whether any tampering was detected.
    */
   verifyLedgerIntegrity(): ChainVerificationResult {
-    if (this.isInMemory) {
-      this.repairLegacyChainInMemory();
-    } else {
-      this.repairLegacyChainInDb();
-    }
-
     const rows: AuditEntry[] = this.isInMemory
       ? [...this.memoryLogs].sort((a, b) => (a.id || 0) - (b.id || 0))
       : this.db.prepare('SELECT * FROM audit_logs ORDER BY id ASC').all().map((r: any) => this.parseRow(r));
@@ -537,6 +589,41 @@ export class AuditService {
     return { intact: true, checkedBlocks: rows.length };
   }
 
+  exportChain(filePath: string, caseId?: string): { success: boolean; filePath: string; count: number; chainHash: string } {
+    const blocks = [...this.getOperations(100000, 0, caseId ? { caseId } : undefined)]
+      .sort((a, b) => (a.id || 0) - (b.id || 0));
+    const chainBlocks = [...this.getOperations(100000, 0)]
+      .sort((a, b) => (a.id || 0) - (b.id || 0));
+    const payload = JSON.stringify({ format: 'CYBERSANITIZE_SIGNED_CHAIN_V1', caseId: caseId || 'ALL', publicKey: this.getPublicKey(), blocks, chainBlocks });
+    const chainHash = crypto.createHash('sha256').update(payload).digest('hex');
+    const signature = this.signEntryHash(chainHash);
+    fs.writeFileSync(filePath, JSON.stringify({ payload: JSON.parse(payload), chainHash, signature, publicKey: this.getPublicKey() }, null, 2), 'utf8');
+    return { success: true, filePath, count: blocks.length, chainHash };
+  }
+
+  verifyChainExport(filePath: string): { isValid: boolean; chainIntact: boolean; signatureValid: boolean; caseId: string; count: number; errors: string[] } {
+    try {
+      const envelope = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      const payloadJson = JSON.stringify(envelope.payload);
+      const calculatedHash = crypto.createHash('sha256').update(payloadJson).digest('hex');
+      const signatureValid = nacl.sign.detached.verify(
+        Buffer.from(envelope.chainHash || '', 'hex'),
+        new Uint8Array(Buffer.from(envelope.signature || '', 'hex')),
+        new Uint8Array(Buffer.from(envelope.publicKey || '', 'hex'))
+      );
+      const chainBlocks = [...(envelope.payload?.chainBlocks || envelope.payload?.blocks || [])]
+        .sort((a: AuditEntry, b: AuditEntry) => (a.id || 0) - (b.id || 0));
+      const chain = verifyEntries(chainBlocks, envelope.publicKey || '');
+      const errors: string[] = [];
+      if (calculatedHash !== envelope.chainHash) errors.push('Chain export payload hash mismatch.');
+      if (!signatureValid) errors.push('Chain export signature verification failed.');
+      if (!chain.intact) errors.push(chain.reason || 'Exported chain is invalid.');
+      return { isValid: calculatedHash === envelope.chainHash && signatureValid && chain.intact, chainIntact: chain.intact, signatureValid, caseId: envelope.payload?.caseId || 'ALL', count: chainBlocks.length, errors };
+    } catch (error: any) {
+      return { isValid: false, chainIntact: false, signatureValid: false, caseId: '', count: 0, errors: [error.message] };
+    }
+  }
+
   /**
    * Export the entire audit ledger (or a case-scoped subset) plus report certificates
    * into a cryptographically signed forensic evidence bundle (.forensic file).
@@ -556,11 +643,13 @@ export class AuditService {
     // Ensure blocks are in chronological order (id ascending)
     const logs = [...rawLogs].sort((a, b) => (a.id || 0) - (b.id || 0));
 
+    const completeLogs = [...this.getOperations(100000, 0)].sort((a, b) => (a.id || 0) - (b.id || 0));
     const ledgerJson = JSON.stringify({
       generatedAt: new Date().toISOString(),
       caseId: caseId || 'ALL',
       publicKey: this.getPublicKey(),
-      blocks: logs
+      blocks: logs,
+      chainBlocks: completeLogs
     }, null, 2);
 
     const certFiles: { name: string; path: string }[] = [];
@@ -594,11 +683,6 @@ export class AuditService {
         const sigBytes = fs.readFileSync(sigPath);
         manifestEntries[`certificates/${cf.name}.sig`] = crypto.createHash('sha256').update(sigBytes).digest('hex');
       }
-      const htmlPath = cf.path.replace(/\.pdf$/, '_verify.html');
-      if (fs.existsSync(htmlPath)) {
-        const htmlBytes = fs.readFileSync(htmlPath);
-        manifestEntries[`certificates/${cf.name.replace(/\.pdf$/, '_verify.html')}`] = crypto.createHash('sha256').update(htmlBytes).digest('hex');
-      }
     }
 
     const manifestJson = JSON.stringify({ files: manifestEntries, createdAt: new Date().toISOString() }, null, 2);
@@ -625,10 +709,6 @@ export class AuditService {
       const sigPath = cf.path + '.sig';
       if (fs.existsSync(sigPath)) {
         fs.copyFileSync(sigPath, path.join(tmpDir, 'certificates', cf.name + '.sig'));
-      }
-      const htmlPath = cf.path.replace(/\.pdf$/, '_verify.html');
-      if (fs.existsSync(htmlPath)) {
-        fs.copyFileSync(htmlPath, path.join(tmpDir, 'certificates', cf.name.replace(/\.pdf$/, '_verify.html')));
       }
     }
 
@@ -705,11 +785,12 @@ export class AuditService {
       // 4. Verify internal ledger hash chain and block signatures
       const ledger = JSON.parse(ledgerJson);
       const blocks: AuditEntry[] = [...(ledger.blocks || [])].sort((a, b) => (a.id || 0) - (b.id || 0));
+      const chainBlocks: AuditEntry[] = [...(ledger.chainBlocks || blocks)].sort((a, b) => (a.id || 0) - (b.id || 0));
       let chainIntact = true;
 
-      for (let i = 0; i < blocks.length; i++) {
-        const block = blocks[i];
-        const prevBlock = i > 0 ? blocks[i - 1] : null;
+      for (let i = 0; i < chainBlocks.length; i++) {
+        const block = chainBlocks[i];
+        const prevBlock = i > 0 ? chainBlocks[i - 1] : null;
 
         // If contiguous blocks exist in the export, check their cryptographic link
         if (prevBlock && block.id === (prevBlock.id || 0) + 1) {
@@ -887,10 +968,24 @@ export class AuditService {
   }
 
   private parseRow(row: any): AuditEntry {
+    let details: any = {};
+    let verificationResult: any = null;
+    try {
+      details = typeof row.details === 'string' ? JSON.parse(row.details) : (row.details || {});
+    } catch (_) {
+      details = { __invalidSerializedValue: String(row.details) };
+    }
+    try {
+      verificationResult = row.verification_result
+        ? (typeof row.verification_result === 'string' ? JSON.parse(row.verification_result) : row.verification_result)
+        : null;
+    } catch (_) {
+      verificationResult = { __invalidSerializedValue: String(row.verification_result) };
+    }
     return {
       ...row,
-      details: typeof row.details === 'string' ? JSON.parse(row.details) : row.details,
-      verification_result: row.verification_result ? JSON.parse(row.verification_result) : null
+      details,
+      verification_result: verificationResult
     };
   }
 }

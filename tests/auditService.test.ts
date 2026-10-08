@@ -4,92 +4,56 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { AuditService } from '../src/main/services/auditService';
-import { ServiceContext } from '../src/main/services/serviceContext';
-import { SecurityError } from '../src/main/types/errors';
 
-test('AuditService - Full ledger lifecycle, chain verification, bundle export & verify', async () => {
+test('AuditService seals, scopes, exports, and detects ledger tampering', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs_test_audit_'));
-  const context = new ServiceContext(tmpDir);
-  const auditService = new AuditService(context);
+  const auditService = new AuditService(path.join(tmpDir, 'audit.db'));
 
-  // 1. Record operations
-  const op1 = await auditService.recordOperation({
-    case_id: 'CASE-001',
-    operation: 'DRIVE_WIPE',
+  const operation = {
+    timestamp: new Date().toISOString(),
+    operation: 'DRIVE_WIPE' as const,
     target: '\\\\.\\PhysicalDrive2',
-    status: 'COMPLETED',
-    operator: 'EXAMINER-1'
-  });
-  assert.strictEqual(op1.id, 1);
-  assert.ok(op1.entry_hash);
-  assert.strictEqual(op1.entry_hash.length, 64);
-  assert.strictEqual(op1.prev_hash, '0'.repeat(64));
+    details: { caseId: 'CASE-001', caseTitle: 'Test Case', evidenceTag: 'EVD-001' },
+    status: 'COMPLETED' as const,
+    operator: 'EXAMINER-1',
+    hash_before: 'a'.repeat(64),
+    hash_after: 'b'.repeat(64),
+    verification_result: { verified: true }
+  };
+  const firstId = auditService.logOperation(operation);
+  auditService.logOperation({ ...operation, operation: 'FILE_ERASE', target: 'C:\\test\\evidence.docx' });
 
-  const op2 = await auditService.recordOperation({
-    case_id: 'CASE-001',
-    operation: 'FILE_ERASE',
-    target: 'C:\\test\\evidence.docx',
-    status: 'COMPLETED',
-    operator: 'EXAMINER-1'
-  });
-  assert.strictEqual(op2.id, 2);
-  assert.strictEqual(op2.prev_hash, op1.entry_hash);
+  assert.strictEqual(firstId, 1);
+  assert.strictEqual(auditService.verifyLedgerIntegrity().intact, true);
+  assert.strictEqual(auditService.getStats('CASE-001').total, 2);
+  assert.strictEqual(auditService.getStats('OTHER-CASE').total, 0);
 
-  // 2. Verify chain integrity
-  const verification = await auditService.verifyChain();
-  assert.strictEqual(verification.status, 'VALID');
-  assert.strictEqual(verification.checkedEntries, 2);
+  const bundle = await auditService.exportForensicBundle('CASE-001', path.join(tmpDir, 'reports'));
+  assert.ok(fs.existsSync(bundle.bundlePath));
+  const verified = await auditService.verifyForensicBundle(bundle.bundlePath);
+  assert.strictEqual(verified.isValid, true);
+  assert.strictEqual(verified.chainIntact, true);
+  assert.strictEqual(verified.caseId, 'CASE-001');
 
-  // 3. Stats query
-  const stats = await auditService.getStats('CASE-001');
-  assert.strictEqual(stats.total, 2);
-  assert.strictEqual(stats.wipes, 1);
-  assert.strictEqual(stats.erases, 1);
+  const chainPath = path.join(tmpDir, 'audit.cschain');
+  const chainExport = auditService.exportChain(chainPath, 'CASE-001');
+  assert.strictEqual(chainExport.success, true);
+  assert.strictEqual(auditService.verifyChainExport(chainPath).isValid, true);
+  const chainEnvelope = JSON.parse(fs.readFileSync(chainPath, 'utf8'));
+  chainEnvelope.payload.blocks[0].target = 'C:\\tampered-in-export';
+  fs.writeFileSync(chainPath, JSON.stringify(chainEnvelope), 'utf8');
+  assert.strictEqual(auditService.verifyChainExport(chainPath).isValid, false);
 
-  // 4. CSV export
-  const csvPath = path.join(tmpDir, 'export.csv');
-  const csvRes = await auditService.exportCsv(csvPath, 'CASE-001');
-  assert.strictEqual(csvRes.success, true);
-  assert.strictEqual(csvRes.count, 2);
-  assert.ok(fs.existsSync(csvPath));
-  const csvContent = fs.readFileSync(csvPath, 'utf8');
-  assert.ok(csvContent.includes('CASE-001'));
-  assert.ok(csvContent.includes('DRIVE_WIPE'));
+  if ((auditService as any).db) {
+    (auditService as any).db.prepare("UPDATE audit_logs SET target = 'C:\\tampered' WHERE id = 1").run();
+  } else {
+    (auditService as any).memoryLogs[0].target = 'C:\\tampered';
+  }
+  const tampered = auditService.verifyLedgerIntegrity();
+  assert.strictEqual(tampered.intact, false);
+  assert.strictEqual(tampered.brokenAtId, 1);
 
-  // 5. Sealed Bundle Export & Import Verification
-  const bundlePath = path.join(tmpDir, 'evidence.forensic');
-  const bundleRes = await auditService.exportBundle('CASE-001', bundlePath);
-  assert.strictEqual(bundleRes.success, true);
-  assert.ok(fs.existsSync(bundlePath));
-
-  const verifyBundleRes = await auditService.verifyBundle(bundlePath);
-  assert.strictEqual(verifyBundleRes.success, true);
-  assert.strictEqual(verifyBundleRes.isValid, true);
-  assert.strictEqual(verifyBundleRes.checkedEntries, 2);
-
-  // 6. Permission check on clearLogs
-  // Unauthorized operator (viewer) must be denied
-  await assert.rejects(
-    async () => {
-      await auditService.clearLogs({ operatorId: 'guest', role: 'viewer' });
-    },
-    (err: any) => {
-      assert.ok(err instanceof SecurityError);
-      assert.strictEqual(err.code, 'PERMISSION_DENIED');
-      return true;
-    }
-  );
-
-  // Authorized operator (admin) can clear logs
-  const clearRes = await auditService.clearLogs({ operatorId: 'admin', role: 'admin' });
-  assert.strictEqual(clearRes.success, true);
-  assert.strictEqual(clearRes.clearedCount, 2);
-
-  const statsAfter = await auditService.getStats('CASE-001');
-  assert.strictEqual(statsAfter.total, 0);
-
-  (await context.getDatabase()).close();
-
+  auditService.close();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 

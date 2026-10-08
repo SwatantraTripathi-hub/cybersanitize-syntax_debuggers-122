@@ -54,10 +54,22 @@ export default function AuditLog() {
   const handleExport = async () => {
     if (window.api?.exportAuditCSV) {
       try {
-        const res = await window.api.exportAuditCSV()
+        const res = await window.api.exportAuditCSV(caseFilter !== 'ALL' ? caseFilter : undefined)
         if (res.success) alert(`Cryptographic Audit Trail exported to:\n${res.filePath}`)
       } catch (e) { console.error(e) }
     }
+  }
+
+  const handleExportChain = async () => {
+    if (!window.api?.exportAuditChain) return
+    const res = await window.api.exportAuditChain(caseFilter !== 'ALL' ? caseFilter : undefined)
+    if (res.success) alert(`Signed audit chain exported to:\n${res.filePath}`)
+  }
+
+  const handleVerifyChainFile = async () => {
+    if (!window.api?.verifyAuditChainFile) return
+    const result = await window.api.verifyAuditChainFile()
+    setChainStatus({ intact: result.isValid, checkedBlocks: result.count, reason: result.errors?.join(' ') })
   }
 
   const handleVerifyChain = async () => {
@@ -140,6 +152,7 @@ export default function AuditLog() {
       case 'FILE_RECOVERY': return <Search className="w-3.5 h-3.5 text-blue-600 shrink-0" />
       case 'WRITE_BLOCKER_VERIFIED': return <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
       case 'EVIDENCE_IMPORT': return <Package className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+      case 'FLEET_ATTESTATION': return <Server className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
       default: return <Cpu className="w-3.5 h-3.5 text-gray-500 shrink-0" />
     }
   }
@@ -206,6 +219,18 @@ export default function AuditLog() {
             className="flex items-center gap-2 px-4 py-2 bg-atlas-forest hover:bg-atlas-forestDark text-white font-semibold text-xs rounded-lg transition shadow-sm"
           >
             <Download className="w-3.5 h-3.5" /> Export CSV
+          </button>
+          <button
+            onClick={handleExportChain}
+            className="flex items-center gap-2 px-3.5 py-2 bg-white border border-atlas-border hover:border-atlas-forest text-atlas-forest font-semibold text-xs rounded-lg transition shadow-sm"
+          >
+            <Download className="w-3.5 h-3.5" /> Export Chain
+          </button>
+          <button
+            onClick={handleVerifyChainFile}
+            className="flex items-center gap-2 px-3.5 py-2 bg-white border border-atlas-border hover:border-atlas-forest text-atlas-forest font-semibold text-xs rounded-lg transition shadow-sm"
+          >
+            <Eye className="w-3.5 h-3.5" /> Verify Chain File
           </button>
         </div>
       </div>

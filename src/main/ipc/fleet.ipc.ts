@@ -42,23 +42,30 @@ export function registerFleetIpc(mainWindow: BrowserWindow, auditService?: Audit
         }
         if (auditService) {
           try {
+            const result = data.result;
+            const workspace = fleetHostInstance?.getWorkspaceMeta();
+            const operation = result.operation === 'RECOVERY' ? 'FILE_RECOVERY' : 'DRIVE_WIPE';
             auditService.logOperation({
               timestamp: new Date().toISOString(),
-              operation: (data.operation || 'DRIVE_WIPE') as any,
-              target: `Fleet Node: ${data.nodeId || 'Node'} (${data.hostname || data.ip || 'Remote'})`,
+              operation,
+              target: `Fleet Node: ${data.nodeId || 'Node'}`,
               details: {
-                systemHost: data.hostname,
+                caseId: workspace?.caseId || `FLEET-${fleetHostInstance?.getRoomKey() || 'UNKNOWN'}`,
+                caseTitle: workspace?.title || 'Fleet Workspace',
+                evidenceTag: workspace?.evidenceTag || 'FLEET-EVIDENCE',
+                authorizingOfficer: workspace?.authorizingOfficer || 'Fleet Orchestrator',
+                systemHost: data.nodeId,
                 nodeId: data.nodeId,
-                ip: data.ip,
+                summary: result.summary,
                 status: 'COMPLETED',
-                standard: data.standard || 'nist-clear',
+                operation: result.operation,
                 fleetCluster: true
               },
               status: 'VERIFIED',
-              operator: 'FLEET_ORCHESTRATOR',
-              hash_before: data.preHash || null,
-              hash_after: data.postHash || null,
-              verification_result: data.verification || { verified: true }
+              operator: workspace?.authorizingOfficer || 'FLEET_ORCHESTRATOR',
+              hash_before: null,
+              hash_after: null,
+              verification_result: { verified: result.success, durationMs: result.durationMs }
             })
           } catch (_) {}
         }

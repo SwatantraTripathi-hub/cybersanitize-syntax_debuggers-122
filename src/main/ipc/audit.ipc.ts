@@ -18,8 +18,8 @@ export function registerAuditIpc(auditService: AuditService) {
     return { success: true };
   });
 
-  ipcMain.handle('audit:export-csv', async () => {
-    const logs = auditService.getOperations(10000, 0);
+  ipcMain.handle('audit:export-csv', async (_, caseId?: string) => {
+    const logs = auditService.getOperations(10000, 0, caseId ? { caseId } : undefined);
     if (logs.length === 0) return { success: false, message: 'No logs to export' };
 
     const { canceled, filePath } = await dialog.showSaveDialog({
@@ -29,13 +29,51 @@ export function registerAuditIpc(auditService: AuditService) {
     });
     if (canceled || !filePath) return { success: false, message: 'Export canceled' };
 
+    const csv = (value: unknown): string => {
+      const text = value === null || value === undefined ? '' : String(value);
+      return `"${text.replace(/"/g, '""')}"`;
+    };
     const header = 'ID,Timestamp,Operation,Target,Status,Operator,Hash_Before,Hash_After,Prev_Hash,Entry_Hash,Ed25519_Signature\n';
-    const rows = logs.map(l =>
-      `${l.id},"${l.timestamp}",${l.operation},"${l.target}",${l.status},"${l.operator}","${l.hash_before || ''}","${l.hash_after || ''}","${(l as any).prev_hash || ''}","${(l as any).entry_hash || ''}","${(l as any).signature || ''}"`
-    ).join('\n');
+    const rows = logs.map(l => [
+      l.id,
+      l.timestamp,
+      l.operation,
+      l.target,
+      l.status,
+      l.operator,
+      l.hash_before,
+      l.hash_after,
+      (l as any).prev_hash,
+      (l as any).entry_hash,
+      (l as any).signature
+    ].map(csv).join(',')).join('\n');
 
     fs.writeFileSync(filePath, header + rows, 'utf8');
     return { success: true, filePath };
+  });
+
+  ipcMain.handle('audit:export-chain', async (_, caseId?: string) => {
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: 'Export Signed Audit Chain',
+      defaultPath: `Audit_Chain_${(caseId || 'ALL').replace(/[^a-zA-Z0-9_-]/g, '_')}_${new Date().toISOString().slice(0, 10)}.cschain`,
+      filters: [{ name: 'CyberSanitize Chain Export', extensions: ['cschain', 'json'] }]
+    });
+    if (canceled || !filePath) return { success: false, message: 'Export canceled' };
+    return auditService.exportChain(filePath, caseId);
+  });
+
+  ipcMain.handle('audit:verify-chain-file', async (_, chainPath?: string) => {
+    let targetPath = chainPath;
+    if (!targetPath) {
+      const { canceled, filePaths } = await dialog.showOpenDialog({
+        title: 'Verify Signed Audit Chain',
+        filters: [{ name: 'CyberSanitize Chain Export', extensions: ['cschain', 'json'] }, { name: 'All Files', extensions: ['*'] }],
+        properties: ['openFile']
+      });
+      if (canceled || filePaths.length === 0) return { isValid: false, errors: ['No chain export selected.'] };
+      targetPath = filePaths[0];
+    }
+    return auditService.verifyChainExport(targetPath);
   });
 
   ipcMain.handle('audit:verify-chain', async () => {

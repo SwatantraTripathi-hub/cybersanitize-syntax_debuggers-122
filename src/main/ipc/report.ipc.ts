@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { app } from 'electron';
+import { verificationServer } from '../services/verificationServer';
 
 export function registerReportIpc(auditService: AuditService) {
   const reportService = new ReportService();
@@ -86,7 +87,7 @@ export function registerReportIpc(auditService: AuditService) {
         if (caseId && repCaseId && repCaseId !== caseId) continue;
         const verifierHtmlPath = fullPdfPath.replace(/\.pdf$/, '_verify.html');
         const lanIp = getLanIpAddress();
-        const verifyUrl = storedVerifyUrl || (repRef ? `http://${lanIp}:3847/verify?ref=${encodeURIComponent(repRef)}` : `http://${lanIp}:3847/verify?ref=${encodeURIComponent(pdf.replace(/\.pdf$/, ''))}`);
+        const verifyUrl = storedVerifyUrl || (repRef ? `http://${lanIp}:${verificationServer.getPort()}/verify?ref=${encodeURIComponent(repRef)}` : `http://${lanIp}:${verificationServer.getPort()}/verify?ref=${encodeURIComponent(pdf.replace(/\.pdf$/, ''))}`);
         result.push({
           id: pdf,
           path: fullPdfPath,

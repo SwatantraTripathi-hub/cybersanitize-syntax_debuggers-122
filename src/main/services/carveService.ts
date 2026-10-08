@@ -569,7 +569,9 @@ try {
       const activeHashes = new Set<string>()
 
       let volumeLetter = ''
-      const volMatch = sourcePath.match(/([a-zA-Z]):/)
+      const volMatch = (isDevice || /^[a-zA-Z]:[\\\/]?$/.test(sourcePath))
+        ? sourcePath.match(/([a-zA-Z]):/)
+        : null
       if (volMatch) {
         volumeLetter = volMatch[1].toUpperCase()
       } else if (isDevice) {

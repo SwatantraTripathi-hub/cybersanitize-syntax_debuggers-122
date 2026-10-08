@@ -5,6 +5,7 @@ import * as crypto from 'crypto';
 import nacl from 'tweetnacl';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { AuditEntry } from './auditService';
+import { verificationServer } from './verificationServer';
 
 function cleanWinAnsi(text: string): string {
   if (!text) return '';
@@ -198,8 +199,8 @@ export class ReportService {
 
     // 7. Section 3: Cryptographic Hashes & Entropy
     drawSectionHeader('3. CRYPTOGRAPHIC VERIFICATION & ADAPTIVE ENTROPY MATRIX');
-    const preHash = operation.hash_before || details.preHash || crypto.createHash('sha256').update(operation.target + 'pre').digest('hex');
-    const postHash = operation.hash_after || details.postHash || details.acquisitionHashSha256 || crypto.createHash('sha256').update(operation.target + 'post').digest('hex');
+    const preHash = operation.hash_before || details.preHash || 'UNAVAILABLE';
+    const postHash = operation.hash_after || details.postHash || details.acquisitionHashSha256 || 'UNAVAILABLE';
 
     safeDrawText('Pre-Operation SHA-256 Digest:', { x: 55, y, size: 8, font: fontBold, color: textDark });
     y -= 12;
@@ -268,36 +269,11 @@ export class ReportService {
     }
 
     const lanIp = getLanIpAddress();
-    const serverPort = 3847;
+    const serverPort = verificationServer.getPort();
     const verifyUrl = `http://${lanIp}:${serverPort}/verify?ref=${encodeURIComponent(certRef)}`;
 
-    // Self-Contained Air-Gap Forensic Attestation Payload:
-    // Fully readable on any smartphone in 100% Airplane Mode, and mathematically verifiable offline.
-    const qrPayloadText = [
-      'CYBERSANITIZE AIR-GAP FORENSIC ATTESTATION',
-      `Cert-Ref: ${certRef}`,
-      `Status: ${operation.status || 'VERIFIED'}`,
-      `Case-ID: ${caseId}`,
-      `Tag-ID: ${tagId}`,
-      `Title: ${cleanWinAnsi(caseTitle)}`,
-      `Target: ${cleanWinAnsi(operation.target || 'Storage Device')}`,
-      `Standard: ${details.standard || (isCarve ? 'ISO/IEC 27037 Evidence Carve' : 'NIST SP 800-88 Rev. 1')}`,
-      `Examiner: ${operatorId}`,
-      `Timestamp: ${operation.timestamp || new Date().toISOString()}`,
-      `Pre-SHA256: ${preHash}`,
-      `Post-SHA256: ${postHash}`,
-      `Digest: ${certDigest}`,
-      `Public-Key: ${pubKeyHex}`,
-      `Signature: ${signBlock}`,
-      `Local-Node: ${verifyUrl}`
-    ].join('\n');
-
-    // Generate BOTH QR Codes for the PDF Certificate:
-    // 1. Phone Camera Scan QR (direct 58-char LAN URL -> opens in Safari/Chrome in <0.05s)
+    // Generate the single LAN verification QR used by the certificate.
     const qrBufferUrl = await this.generateQRBuffer(verifyUrl);
-
-    // 2. Air-Gap Forensic Envelope QR (100% Offline, plain text Ed25519 payload for 2D barcode scanners / Airplane mode)
-    const qrBufferAirGap = await this.generateQRBuffer(qrPayloadText);
 
     // 10. QR Card 1: 📱 Instant Phone Camera Scan (LAN / Web Authority)
     page.drawRectangle({
@@ -325,48 +301,16 @@ export class ReportService {
     }
     safeDrawText('Point camera (<0.1s scan)', { x: 46, y: 49, size: 5.5, font: fontRegular, color: textGray });
 
-    // 11. QR Card 2: 🔒 100% Air-Gap Offline Cryptographic Envelope (Zero LAN / Zero Internet)
-    page.drawRectangle({
-      x: 148,
-      y: 46,
-      width: 98,
-      height: 116,
-      color: rgb(1, 1, 1),
-      borderColor: darkSpruce,
-      borderWidth: 1.2
-    });
-    page.drawRectangle({
-      x: 148,
-      y: 147,
-      width: 98,
-      height: 15,
-      color: darkSpruce
-    });
-    safeDrawText('2. AIR-GAP (NO LAN)', { x: 152, y: 152, size: 6.5, font: fontBold, color: rgb(1, 1, 1) });
-    if (qrBufferAirGap) {
-      try {
-        const qrImage2 = await doc.embedPng(qrBufferAirGap);
-        page.drawImage(qrImage2, { x: 153, y: 58, width: 88, height: 88 });
-      } catch (_) {}
-    }
-    safeDrawText('100% Airplane Mode Math', { x: 152, y: 49, size: 5.5, font: fontRegular, color: textGray });
-
-    // 12. Verification & Admissibility Details Block (Center)
-    safeDrawText('DUAL-MODE VERIFICATION SEAL', { x: 254, y: 153, size: 7.5, font: fontBold, color: forestGreen });
-    safeDrawText('Mobile Check (Left QR):', { x: 254, y: 141, size: 6.5, font: fontBold, color: textDark });
-    safeDrawText('Instant phone camera scan via local node.', { x: 254, y: 132, size: 5.8, font: fontRegular, color: textGray });
+    // 11. Verification & Admissibility Details Block (Center)
+    safeDrawText('LAN VERIFICATION SEAL', { x: 254, y: 153, size: 7.5, font: fontBold, color: forestGreen });
+    safeDrawText('Phone Check (LAN QR):', { x: 254, y: 141, size: 6.5, font: fontBold, color: textDark });
+    safeDrawText('Scan while connected to the examiner LAN.', { x: 254, y: 132, size: 5.8, font: fontRegular, color: textGray });
     safeDrawText(`Node: ${verifyUrl.slice(0, 32)}`, { x: 254, y: 123, size: 5.5, font: fontMono, color: emeraldGreen });
+    safeDrawText('Ed25519 signature and SHA-256 digest checked by server.', { x: 254, y: 105, size: 5.8, font: fontRegular, color: textGray });
+    safeDrawText('Sec 65B IEA 1872 & Sec 63 BSA 2023 Compliant', { x: 254, y: 92, size: 6, font: fontBold, color: textDark });
+    safeDrawText('Sovereign Root of Trust: Ed25519 Detached Seal', { x: 254, y: 80, size: 5.8, font: fontRegular, color: textGray });
 
-    safeDrawText('Air-Gap Attestation (Right QR):', { x: 254, y: 111, size: 6.5, font: fontBold, color: textDark });
-    safeDrawText('Self-contained Ed25519 payload. 0% network.', { x: 254, y: 102, size: 5.8, font: fontRegular, color: textGray });
-    safeDrawText('Scannable in Airplane Mode by 2D readers.', { x: 254, y: 93, size: 5.8, font: fontRegular, color: textGray });
-
-    safeDrawText('Offline Verifier: companion [cert]_verify.html', { x: 254, y: 81, size: 6, font: fontBold, color: forestGreen });
-    safeDrawText('Sec 65B IEA 1872 & Sec 63 BSA 2023 Compliant', { x: 254, y: 70, size: 6, font: fontBold, color: textDark });
-    safeDrawText('Sovereign Root of Trust: Ed25519 Detached Seal', { x: 254, y: 59, size: 5.8, font: fontRegular, color: textGray });
-    safeDrawText('WebCrypto native verification in any browser.', { x: 254, y: 49, size: 5.5, font: fontRegular, color: textGray });
-
-    // 13. Official Forensic Seal Box (Bottom Right)
+    // 12. Official Forensic Seal Box (Bottom Right)
     page.drawRectangle({
       x: 426,
       y: 46,
@@ -391,8 +335,8 @@ export class ReportService {
     safeDrawText(`Status: ${operation.status}`, { x: 434, y: 69, size: 7, font: fontBold, color: emeraldGreen });
     safeDrawText('Merkle Chain Intact', { x: 434, y: 55, size: 6, font: fontMono, color: forestGreen });
 
-    // 14. Clean Footer Line (safely inside margins at y: 28)
-    safeDrawText(`CyberSanitize Forensic Suite v1.0 | Certificate: ${certRef} | ISO/IEC 27037:2012 | Dual-Mode Verified (LAN + Air-Gap)`, {
+    // 13. Clean Footer Line (safely inside margins at y: 28)
+    safeDrawText(`CyberSanitize Forensic Suite v1.0 | Certificate: ${certRef} | ISO/IEC 27037:2012 | LAN Verified`, {
       x: 42,
       y: 28,
       size: 6.5,
@@ -427,53 +371,12 @@ export class ReportService {
       postHash,
       pdfSha256,
       verifyUrl,
-      qrPayload: qrPayloadText,
       systemHost: details.systemHost || (details.nodeId ? `Fleet Node (${details.nodeId})` : 'Local Workstation'),
       nodeId: details.nodeId || 'LOCAL',
       isFleetNode: !!(details.nodeId && details.nodeId !== 'LOCAL'),
       enclaveType: 'Sovereign Ed25519 Cryptographic Enclave Keypair',
       timestamp: operation.timestamp || new Date().toISOString()
     }, null, 2));
-
-    // Also generate companion standalone offline verification HTML dossier (opens in any browser with zero network)
-    const standaloneHtmlPath = outputPath.replace(/\.pdf$/, '_verify.html');
-    const qrBase64 = qrBufferUrl ? qrBufferUrl.toString('base64') : (qrBufferAirGap ? qrBufferAirGap.toString('base64') : '');
-
-    // Read minified TweetNaCl to embed inline so the HTML file has ZERO external network dependencies
-    let naclInline = '';
-    try {
-      const naclPath = require.resolve('tweetnacl/nacl-fast.min.js');
-      if (fs.existsSync(naclPath)) naclInline = fs.readFileSync(naclPath, 'utf8');
-    } catch (_) {}
-
-    const standaloneHtml = this.generateStandaloneVerifierHtml({
-      certRef,
-      certTitle,
-      caseId,
-      tagId,
-      caseTitle: cleanWinAnsi(caseTitle),
-      operatorId,
-      target: cleanWinAnsi(operation.target || 'Storage Device'),
-      status: operation.status || 'VERIFIED GENUINE',
-      timestamp: operation.timestamp || new Date().toISOString(),
-      preHash,
-      postHash,
-      entropyVal,
-      certDigest,
-      pubKeyHex,
-      signBlock,
-      pdfSha256,
-      pdfSig,
-      qrBase64,
-      qrPayloadText,
-      verifyUrl,
-      naclInline
-    });
-
-    try {
-      fs.writeFileSync(standaloneHtmlPath, standaloneHtml, 'utf8');
-      console.log(`[ReportService] Standalone verification HTML created: ${standaloneHtmlPath}`);
-    } catch (_) {}
 
     console.log(`[ReportService] Certificate generated: ${outputPath}`);
     return outputPath;
@@ -517,7 +420,7 @@ export class ReportService {
     page.drawRectangle({ x: 25, y: height - 110, width: width - 50, height: 85, color: forestGreen });
     safeDrawText('CYBERSANITIZE - ENTERPRISE FLEET ORCHESTRATION', { x: 45, y: height - 55, size: 14, font: fontBold, color: rgb(1, 1, 1) });
     safeDrawText('MULTI-DEVICE CONSOLIDATED ATTESTATION CERTIFICATE', { x: 45, y: height - 75, size: 10, font: fontBold, color: emeraldGreen });
-    safeDrawText('NIST SP 800-88 Rev. 1 | ISO/IEC 27037:2012 | Air-Gapped Local LAN Mesh Audit', { x: 45, y: height - 94, size: 7.5, font: fontRegular, color: rgb(0.7, 0.9, 0.8) });
+    safeDrawText('NIST SP 800-88 Rev. 1 | ISO/IEC 27037:2012 | Local LAN Mesh Audit', { x: 45, y: height - 94, size: 7.5, font: fontRegular, color: rgb(0.7, 0.9, 0.8) });
 
     const certRef = `FLEET-${fleetKey.replace(/[^0-9A-Z]/gi, '')}-${Date.now().toString().slice(-6)}`;
     page.drawRectangle({ x: 45, y: height - 165, width: width - 90, height: 42, color: lightBg, borderColor: rgb(0.85, 0.9, 0.87), borderWidth: 1 });
@@ -589,20 +492,8 @@ export class ReportService {
     y -= 6;
 
     const lanIp = getLanIpAddress();
-    const verifyUrl = `http://${lanIp}:3847/verify?ref=${encodeURIComponent(certRef)}`;
-    const qrPayloadText = [
-      'CYBERSANITIZE FLEET CLUSTER ATTESTATION',
-      `Cert-Ref: ${certRef}`,
-      `Fleet-Key: ${fleetKey}`,
-      `Nodes-Count: ${nodes.length}`,
-      `Merkle-Root: ${merkleRoot}`,
-      `Digest: ${certDigest}`,
-      `Public-Key: ${pubKeyHex}`,
-      `Signature: ${signBlock}`
-    ].join('\n');
-
+    const verifyUrl = `http://${lanIp}:${verificationServer.getPort()}/verify?ref=${encodeURIComponent(certRef)}`;
     const qrBufferUrl = await this.generateQRBuffer(verifyUrl);
-    const qrBufferAirGap = await this.generateQRBuffer(qrPayloadText);
 
     if (qrBufferUrl) {
       try {
@@ -610,16 +501,9 @@ export class ReportService {
         page.drawImage(qrImage1, { x: 45, y: 55, width: 80, height: 80 });
       } catch (_) {}
     }
-    if (qrBufferAirGap) {
-      try {
-        const qrImage2 = await doc.embedPng(qrBufferAirGap);
-        page.drawImage(qrImage2, { x: 140, y: 55, width: 80, height: 80 });
-      } catch (_) {}
-    }
-
-    safeDrawText('DUAL-MODE FLEET VERIFICATION SEAL', { x: 235, y: 125, size: 7.5, font: fontBold, color: forestGreen });
-    safeDrawText('1. Phone Scan QR: Instant LAN cluster check', { x: 235, y: 112, size: 6.5, font: fontRegular, color: textDark });
-    safeDrawText('2. Air-Gap QR: 100% Offline Ed25519 Cluster Seal', { x: 235, y: 100, size: 6.5, font: fontRegular, color: textDark });
+    safeDrawText('LAN FLEET VERIFICATION SEAL', { x: 235, y: 125, size: 7.5, font: fontBold, color: forestGreen });
+    safeDrawText('Phone Scan QR: Instant LAN cluster check', { x: 235, y: 112, size: 6.5, font: fontRegular, color: textDark });
+    safeDrawText('Server validates the cluster digest and signature.', { x: 235, y: 100, size: 6.5, font: fontRegular, color: textDark });
     safeDrawText(`Cluster Merkle: ${merkleRoot.slice(0, 36)}...`, { x: 235, y: 88, size: 6, font: fontMono, color: emeraldGreen });
     safeDrawText('Admissibility: Sec 65B IEA / Sec 63 BSA / NIST SP 800-88', { x: 235, y: 76, size: 6, font: fontBold, color: textGray });
 
@@ -666,7 +550,6 @@ export class ReportService {
       postHash: merkleRoot,
       pdfSha256,
       verifyUrl,
-      qrPayload: qrPayloadText,
       systemHost: 'FLEET_CLUSTER_MESH',
       nodeId: 'FLEET_CLUSTER',
       isFleetNode: true,
@@ -678,6 +561,7 @@ export class ReportService {
     if (this.auditService?.logOperation) {
       try {
         this.auditService.logOperation({
+          timestamp: new Date().toISOString(),
           operation: 'FLEET_ATTESTATION',
           target: `Fleet Room ${fleetKey} (${nodes.length} Nodes)`,
           status: 'VERIFIED',
@@ -691,6 +575,9 @@ export class ReportService {
             systemHost: 'FLEET_CLUSTER_MESH',
             nodeId: 'FLEET_CLUSTER',
             fleetCluster: true
+            ,caseId
+            ,certRef
+            ,certDigest
           }
         });
       } catch (_) {}

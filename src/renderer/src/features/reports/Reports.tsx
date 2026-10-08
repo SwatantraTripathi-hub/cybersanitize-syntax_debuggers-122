@@ -364,7 +364,7 @@ export default function Reports() {
           <div className="bg-atlas-emeraldLight/40 border border-[#C0EAD6] rounded-xl p-3 text-xs text-atlas-forest flex items-center gap-3 shrink-0">
             <QrCode className="w-4 h-4 shrink-0 text-atlas-forest" />
             <span>
-              <strong>Air-Gap & Standalone Ready:</strong> Certificates are completely self-contained. The embedded QR code and companion <code className="font-mono bg-white px-1 py-0.5 rounded border border-[#C0EAD6]">_verify.html</code> file can be opened and verified on any computer or smartphone without running this application or any local server.
+              <strong>LAN Verification Ready:</strong> Scan the certificate QR while connected to the examiner workstation LAN. The local verification authority checks the PDF hash, signature, and case record.
             </span>
           </div>
 
@@ -409,7 +409,7 @@ export default function Reports() {
                       <button
                         onClick={() => handleOpenQrModal(r)}
                         className="p-2 text-atlas-forest border border-atlas-border rounded-lg hover:bg-atlas-bg text-xs"
-                        title="View Air-Gap QR Attestation (Airplane Mode Compatible)"
+                        title="View LAN Verification QR"
                       >
                         <QrCode className="w-4 h-4" />
                       </button>
@@ -419,13 +419,6 @@ export default function Reports() {
                         title="Open PDF Certificate"
                       >
                         <Eye className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => window.api.openReport(r.path.replace(/\.pdf$/, '_verify.html'))}
-                        className="p-2 text-atlas-forest border border-atlas-border rounded-lg hover:bg-atlas-bg text-xs"
-                        title="Open Standalone Verification HTML (Offline / Outside App)"
-                      >
-                        <ExternalLink className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => window.api.showReportInFolder(r.path)}
@@ -548,17 +541,6 @@ export default function Reports() {
             >
               <FileText className="w-3.5 h-3.5" />
               File Verification (.pdf / .forensic)
-            </button>
-            <button
-              onClick={() => setVerifyMode('airgap')}
-              className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
-                verifyMode === 'airgap'
-                  ? 'bg-white text-atlas-forest shadow-sm border border-atlas-border'
-                  : 'text-atlas-muted hover:text-atlas-navy'
-              }`}
-            >
-              <QrCode className="w-3.5 h-3.5" />
-              Air-Gap QR Scanner / Text Verifier
             </button>
           </div>
 
@@ -828,7 +810,7 @@ export default function Reports() {
             <div className="font-bold text-atlas-navy mb-2 flex items-center gap-2"><Cpu className="w-3.5 h-3.5 text-atlas-forest" /> How Verification Works</div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div><span className="font-semibold text-atlas-navy block">PDF Certificate</span>The PDF is hashed with SHA-256 and the hash is verified against the stored Sovereign Ed25519 Enclave signature. Any byte-level modification is detected.</div>
-              <div><span className="font-semibold text-atlas-navy block">Air-Gap QR Attestation</span>The QR code encodes a self-contained cryptographic record. Scanning with any phone in Airplane Mode displays the evidence, and signature math verifies it offline.</div>
+              <div><span className="font-semibold text-atlas-navy block">LAN QR Verification</span>The QR code opens the local verification authority, which checks the certificate PDF hash, Ed25519 signature, and case-bound evidence digest.</div>
               <div><span className="font-semibold text-atlas-navy block">Audit Chain</span>Every audit block's prev_hash must match the previous block's entry_hash, forming an unbreakable forward-integrity chain.</div>
             </div>
           </div>
@@ -874,22 +856,11 @@ export default function Reports() {
                 <Smartphone className="w-4 h-4 text-emerald-600" />
                 <span>Instant Phone Camera (URL)</span>
               </button>
-              <button
-                onClick={() => handleSwitchQrTab('airgap')}
-                className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
-                  qrModalTab === 'airgap'
-                    ? 'bg-white text-atlas-forest shadow-sm border border-[#C0EAD6]'
-                    : 'text-gray-500 hover:text-gray-900'
-                }`}
-              >
-                <ShieldCheck className="w-4 h-4 text-blue-600" />
-                <span>Air-Gap Envelope (Offline)</span>
-              </button>
             </div>
 
             {/* Content Body */}
             <div className="overflow-y-auto space-y-4 pr-1">
-              {qrModalTab === 'url' ? (
+              {(
                 <>
                   {/* High-Contrast Phone QR Card */}
                   <div className="flex flex-col items-center justify-center bg-[#FAFCFB] border-2 border-emerald-500/20 rounded-2xl p-6 shadow-sm">
@@ -952,42 +923,6 @@ export default function Reports() {
                     </div>
                   </div>
                 </>
-              ) : (
-                <>
-                  {/* Air-Gap QR Card */}
-                  <div className="flex flex-col items-center justify-center bg-[#FAFCFB] border border-atlas-border rounded-2xl p-5 shadow-sm">
-                    {qrModalDataUrl ? (
-                      <div className="p-3 bg-white rounded-2xl shadow-md border border-gray-200">
-                        <img
-                          src={qrModalDataUrl}
-                          alt="Air-Gap Cryptographic QR Code"
-                          className="w-64 h-64 sm:w-72 sm:h-72 object-contain rounded-lg"
-                        />
-                      </div>
-                    ) : (
-                      <div className="w-64 h-64 sm:w-72 sm:h-72 flex flex-col items-center justify-center text-xs text-atlas-muted">
-                        <RefreshCw className="w-8 h-8 animate-spin text-atlas-forest mb-2" />
-                        <span>Rendering cryptographic payload...</span>
-                      </div>
-                    )}
-                    <div className="text-[11px] text-atlas-muted text-center mt-3 max-w-sm leading-relaxed">
-                      Self-contained Ed25519 payload for <strong>2D Barcode Scanners</strong> and air-gap terminals. Contains complete forensic hashes and Sovereign signature.
-                    </div>
-                  </div>
-
-                  {/* Text payload */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-bold text-atlas-navy">Self-Contained Signed Attestation Envelope:</label>
-                      <span className="text-[10px] text-gray-500 font-mono">100% Offline Math</span>
-                    </div>
-                    <textarea
-                      readOnly
-                      value={selectedQrReport.qrPayload || selectedQrReport.certRef}
-                      className="w-full h-24 p-2.5 font-mono text-[10px] bg-[#00141E] text-[#00ED64] border border-atlas-border rounded-xl outline-none select-all resize-none"
-                    />
-                  </div>
-                </>
               )}
             </div>
 
@@ -995,9 +930,7 @@ export default function Reports() {
             <div className="flex items-center justify-between gap-2 pt-3 border-t border-atlas-border shrink-0">
               <button
                 onClick={() => {
-                  const contentToCopy = qrModalTab === 'url'
-                    ? (selectedQrReport.verifyUrl || `http://10.112.136.85:3847/verify?ref=${encodeURIComponent(selectedQrReport.certRef)}`)
-                    : (selectedQrReport.qrPayload || selectedQrReport.certRef)
+                  const contentToCopy = selectedQrReport.verifyUrl || `http://10.112.136.85:3847/verify?ref=${encodeURIComponent(selectedQrReport.certRef)}`
                   navigator.clipboard.writeText(contentToCopy)
                   setCopiedToast(true)
                   setTimeout(() => setCopiedToast(false), 2000)
@@ -1005,36 +938,20 @@ export default function Reports() {
                 className="px-4 py-2 bg-atlas-forest hover:bg-atlas-forestDark text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5 shadow-sm"
               >
                 {copiedToast ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                {copiedToast ? 'Copied to Clipboard!' : (qrModalTab === 'url' ? 'Copy URL' : 'Copy Payload')}
+                {copiedToast ? 'Copied to Clipboard!' : 'Copy URL'}
               </button>
 
               <div className="flex items-center gap-2">
-                {qrModalTab === 'url' ? (
-                  <button
-                    onClick={() => {
-                      const u = selectedQrReport.verifyUrl || `http://10.112.136.85:3847/verify?ref=${encodeURIComponent(selectedQrReport.certRef)}`
-                      window.open(u, '_blank')
-                    }}
-                    className="px-4 py-2 border border-atlas-border hover:bg-atlas-bg text-atlas-navy text-xs font-semibold rounded-xl transition flex items-center gap-1.5"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5 text-atlas-forest" />
-                    Open in Web Browser
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => {
-                      if (selectedQrReport.verifierHtmlPath) {
-                        window.api.openReport(selectedQrReport.verifierHtmlPath)
-                      } else {
-                        window.api.openReport(selectedQrReport.path.replace(/\.pdf$/, '_verify.html'))
-                      }
-                    }}
-                    className="px-4 py-2 border border-atlas-border hover:bg-atlas-bg text-atlas-navy text-xs font-semibold rounded-xl transition flex items-center gap-1.5"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5 text-atlas-forest" />
-                    Open Offline Verifier HTML
-                  </button>
-                )}
+                <button
+                  onClick={() => {
+                    const u = selectedQrReport.verifyUrl || `http://10.112.136.85:3847/verify?ref=${encodeURIComponent(selectedQrReport.certRef)}`
+                    window.open(u, '_blank')
+                  }}
+                  className="px-4 py-2 border border-atlas-border hover:bg-atlas-bg text-atlas-navy text-xs font-semibold rounded-xl transition flex items-center gap-1.5"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-atlas-forest" />
+                  Open in Web Browser
+                </button>
               </div>
             </div>
           </div>
