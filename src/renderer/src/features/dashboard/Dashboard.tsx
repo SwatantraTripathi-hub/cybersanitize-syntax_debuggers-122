@@ -28,6 +28,7 @@ export const Dashboard: React.FC = () => {
     exportCase, 
     selectedFleetNode, 
     isJoinedClientNode,
+    orchestrationMode,
     isWebSocketConnected,
     joinedWorkspaceMeta,
     backToFleetOverview 
