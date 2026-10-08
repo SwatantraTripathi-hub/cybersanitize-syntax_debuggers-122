@@ -200,6 +200,10 @@ export default function Recovery() {
   }, [])
 
   useEffect(() => {
+    drawHeatmap(progress?.percentage || progress?.percent || 0, status === 'completed')
+  }, [progress, status])
+
+  useEffect(() => {
     if (!selectedFleetNode || isJoinedClientNode || !window.api) return
     const unsubs: Array<(() => void) | void> = []
     if (window.api.onFleetTelemetry) {
