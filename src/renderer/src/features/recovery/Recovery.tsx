@@ -236,8 +236,23 @@ export default function Recovery() {
         setProgress((previous: any) => ({ ...previous, percentage: 100, percent: 100, stage: data.result.summary, phase: data.result.success ? 'COMPLETED' : 'FAILED' }))
         drawHeatmap(100, data.result.success)
         if (data.result.recoveredFiles) {
-          setRecoveredFiles(data.result.recoveredFiles)
-          if (data.result.success && !driveWasWiped) setPreWipeFiles(data.result.recoveredFiles)
+          const recoveredFiles = data.result.recoveredFiles
+          setRecoveredFiles(recoveredFiles)
+          if (data.result.success && !driveWasWiped) setPreWipeFiles(recoveredFiles)
+          if (data.result.success && window.api.saveRecoveredFiles) {
+            void window.api.saveRecoveredFiles(outputPath, recoveredFiles).then((saveResult: any) => {
+              if (!saveResult?.success) {
+                setVerificationNotice(`Recovery completed, but files could not be saved: ${saveResult?.error || 'unknown error'}`)
+                return
+              }
+              if (Array.isArray(saveResult.savedPaths)) {
+                setRecoveredFiles(recoveredFiles.map((file: any, index: number) => ({
+                  ...file,
+                  outputPath: saveResult.savedPaths[index] || file.outputPath
+                })))
+              }
+            })
+          }
         }
       }))
     }
@@ -294,7 +309,7 @@ export default function Recovery() {
 
     if (selectedFleetNode && !isJoinedClientNode) {
       setStatus('running')
-      dispatchBatchRecovery(selectedTypes, requestedRemoteSource)
+      dispatchBatchRecovery(selectedTypes, requestedRemoteSource, outputPath)
       return
     }
 

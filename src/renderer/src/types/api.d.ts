@@ -97,6 +97,7 @@ declare global {
         fileTypes: string[],
         nodeIds?: string[],
         sourcePathByNode?: Record<string, string>,
+        outputDirByNode?: Record<string, string>,
       ) => Promise<{ success: boolean; error?: string }>;
       broadcastFileErase?: (
         paths: string[],
@@ -104,6 +105,10 @@ declare global {
         cleanMetadata: boolean,
         nodeIds?: string[],
       ) => Promise<{ success: boolean; error?: string }>;
+      saveRecoveredFiles?: (
+        destinationDir: string,
+        files: any[],
+      ) => Promise<{ success: boolean; savedPaths?: string[]; error?: string }>;
       closeLobby?: () => Promise<{ success: boolean }>;
       leaveFleetWorkspace?: () => Promise<{ success: boolean }>;
       getFleetNodes?: () => Promise<any[]>;
