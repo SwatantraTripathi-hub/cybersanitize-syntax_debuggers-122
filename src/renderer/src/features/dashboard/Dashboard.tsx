@@ -331,24 +331,25 @@ export const Dashboard: React.FC = () => {
               </div>
             </Link>
 
-            {/* File Shredder Card */}
-            <Link
-              to="/file-eraser"
-              className="atlas-card p-4 shadow-atlas hover:shadow-atlas-hover transition-all group flex flex-col justify-between bg-white"
-            >
-              <div>
-                <div className="w-8 h-8 rounded-lg bg-atlas-lightgreen border border-atlas-bordergreen flex items-center justify-center text-atlas-forest mb-2.5 group-hover:scale-105 transition-transform">
-                  <FileX className="w-4 h-4" />
+            {orchestrationMode !== 'MULTI' && (
+              <Link
+                to="/file-eraser"
+                className="atlas-card p-4 shadow-atlas hover:shadow-atlas-hover transition-all group flex flex-col justify-between bg-white"
+              >
+                <div>
+                  <div className="w-8 h-8 rounded-lg bg-atlas-lightgreen border border-atlas-bordergreen flex items-center justify-center text-atlas-forest mb-2.5 group-hover:scale-105 transition-transform">
+                    <FileX className="w-4 h-4" />
+                  </div>
+                  <h3 className="font-bold text-xs text-atlas-navy flex items-center justify-between">
+                    File Shredder
+                    <ArrowRight className="w-3.5 h-3.5 text-atlas-muted group-hover:text-atlas-forest group-hover:translate-x-0.5 transition-all" />
+                  </h3>
+                  <p className="text-[11px] text-atlas-muted mt-1 leading-snug">
+                    Targeted file erasure & slack purging.
+                  </p>
                 </div>
-                <h3 className="font-bold text-xs text-atlas-navy flex items-center justify-between">
-                  File Shredder
-                  <ArrowRight className="w-3.5 h-3.5 text-atlas-muted group-hover:text-atlas-forest group-hover:translate-x-0.5 transition-all" />
-                </h3>
-                <p className="text-[11px] text-atlas-muted mt-1 leading-snug">
-                  Targeted file erasure & slack purging.
-                </p>
-              </div>
-            </Link>
+              </Link>
+            )}
           </div>
         </div>
 

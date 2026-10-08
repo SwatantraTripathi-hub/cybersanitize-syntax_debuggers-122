@@ -562,6 +562,10 @@ class FleetClient extends EventEmitter {
         eta: p.eta || "--",
         phase: "RECOVERING",
         logLine: p.stage || p.logLine || "Scanning sectors...",
+        filesFound: p.filesFound,
+        foundFile: p.foundFile,
+        bytesScanned: p.bytesScanned,
+        totalBytes: p.totalBytes,
       });
     });
 
@@ -575,6 +579,9 @@ class FleetClient extends EventEmitter {
         operation: "RECOVERY",
         summary: `Recovery complete on ${sourcePath}. ${filesFound} files reconstructed (${(result.totalBytesScanned / 1024 / 1024).toFixed(1)} MB scanned). Duration: ${durationMs}ms`,
         durationMs,
+        filesFound,
+        recoveredFiles: result.filesFound,
+        outputDir,
       };
 
       this._sendTelemetry({
@@ -590,7 +597,7 @@ class FleetClient extends EventEmitter {
         nodeId: this.nodeId,
         roomKey: this.roomKey,
         timestamp: new Date().toISOString(),
-        payload: { ...jobComplete, filesFound, outputDir, types },
+        payload: { ...jobComplete, types },
       });
       this.emit("completed", { nodeId: this.nodeId, result: jobComplete });
     } catch (err: any) {

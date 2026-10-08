@@ -69,6 +69,10 @@ export interface TelemetryPayload {
   eta: string;
   phase: string;
   logLine: string;
+  filesFound?: number;
+  foundFile?: unknown;
+  bytesScanned?: number;
+  totalBytes?: number;
 }
 
 export interface PreScanFindingsPayload {
@@ -104,6 +108,9 @@ export interface JobCompletePayload {
   operation: "WIPE" | "RECOVERY" | "FILE_ERASE" | "PRE_SCAN";
   summary: string;
   durationMs: number;
+  filesFound?: number;
+  recoveredFiles?: unknown[];
+  outputDir?: string;
 }
 
 export interface FleetWorkspaceOptions {

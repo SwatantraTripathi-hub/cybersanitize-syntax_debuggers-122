@@ -214,6 +214,14 @@ export default function Recovery() {
           speed: data.telemetry.speed,
           eta: data.telemetry.eta
         })
+        drawHeatmap(percent, false)
+        if (data.telemetry.foundFile) {
+          setRecoveredFiles(prev => {
+            const foundFile = data.telemetry.foundFile
+            const exists = prev.some(file => file.offset === foundFile.offset && file.type === foundFile.type)
+            return exists ? prev : [...prev, foundFile]
+          })
+        }
         if (data.telemetry.phase === 'RECOVERING') setStatus('running')
       }))
     }
@@ -222,6 +230,11 @@ export default function Recovery() {
         if (data.nodeId !== selectedFleetNode.id || data.result.operation !== 'RECOVERY') return
         setStatus(data.result.success ? 'completed' : 'failed')
         setProgress((previous: any) => ({ ...previous, percentage: 100, percent: 100, stage: data.result.summary, phase: data.result.success ? 'COMPLETED' : 'FAILED' }))
+        drawHeatmap(100, data.result.success)
+        if (data.result.recoveredFiles) {
+          setRecoveredFiles(data.result.recoveredFiles)
+          if (data.result.success && !driveWasWiped) setPreWipeFiles(data.result.recoveredFiles)
+        }
       }))
     }
     return () => unsubs.forEach(unsub => typeof unsub === 'function' && unsub())
