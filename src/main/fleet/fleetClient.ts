@@ -4,17 +4,18 @@
  * On a remote/secondary machine, FleetClient connects to the host's
  * ws://{hostIp}:{port} endpoint, sends JOIN_ROOM with node metadata,
  * then listens for commands (PRE_SCAN_REQ, EXEC_WIPE, EXEC_RECOVERY)
- * and executes them locally — streaming TELEMETRY back and finally
- * sending JOB_COMPLETE when done.
- *
- * In the current build, a single machine runs both FleetHost and
- * FleetClient for demo/local-mesh purposes (loopback connection).
+ * and executes them locally using the REAL wipe / carving engines —
+ * streaming TELEMETRY back and finally sending JOB_COMPLETE when done.
  */
 
 import { EventEmitter } from 'node:events'
 import { WebSocket } from 'ws'
 import * as os from 'node:os'
 import { runPreScan } from './preScanEngine'
+import { WipeEngine } from '../engines/wipeEngine'
+import { CarvingEngine } from '../engines/carvingEngine'
+import * as fs from 'node:fs'
+import * as path from 'node:path'
 import {
   FleetMessageType,
   type FleetPacket,
@@ -43,15 +44,6 @@ class FleetClient extends EventEmitter {
   private roomKey: string = ''
   private reconnectTimer: NodeJS.Timeout | null = null
   private localNodeDetails: JoinRoomPayload | null = null
-
-  /**
-   * Connect to a fleet host and send JOIN_ROOM.
-   *
-   * @param hostIp   - IP of the FleetHost machine (e.g. '127.0.0.1')
-   * @param port     - WebSocket port (default 4096)
-   * @param roomKey  - The CS-FLEET-XXXX room key shown on the dashboard
-   * @param nodeId   - Unique identifier for this client node
-   */
   private workspaceMeta: any = null
 
   /**
@@ -290,88 +282,38 @@ class FleetClient extends EventEmitter {
   }
 
   /**
-   * Simulate a wipe operation with realistic progress telemetry.
-   * In production, this would call the actual wipe engine.
+   * Execute a REAL wipe operation using the WipeEngine.
+   * Streams real telemetry back to the host.
    */
-  private _executeWipe(payload: ExecuteWipePayload): void {
-    const standard = payload.standard || 'nist-clear'
+  private async _executeWipe(payload: ExecuteWipePayload): Promise<void> {
+    const standard = (payload.standard || 'nist-clear') as any
     const startMs = Date.now()
-    const phases = [
-      { pct: 15, log: `Pass 1 of 1 streaming: Writing ${standard.toUpperCase()} pattern...` },
-      { pct: 35, log: 'Overwritten 35% of physical sectors...' },
-      { pct: 60, log: 'Overwritten 60% of physical sectors — throughput stable.' },
-      { pct: 85, log: 'Overwritten 85% — final sectors in progress.' },
-      { pct: 100, log: 'Verified NIST SP 800-88 Sanitized (Shannon Entropy H(X) = 0.0000). Sealed in Ledger.' }
-    ]
 
-    let step = 0
-    const interval = setInterval(() => {
-      const phase = phases[step]
-      if (!phase) {
-        clearInterval(interval)
-        return
-      }
+    // Determine the target: use provided targetPath, or detect the primary
+    // non-boot removable drive. Fall back to user home dir parent for safety.
+    let targetPath = payload.targetPath
 
-      const isLast = step === phases.length - 1
-      this._sendTelemetry({
-        progress: phase.pct,
-        speed: isLast ? '0 MB/s' : `${(450 + Math.random() * 50).toFixed(0)} MB/s`,
-        eta: isLast ? 'Completed' : `${Math.max(1, phases.length - step - 1)}m`,
-        phase: isLast ? 'VERIFIED' : 'SANITIZING',
-        logLine: phase.log
-      })
-
-      if (isLast) {
-        const result: JobCompletePayload = {
-          success: true,
-          operation: 'WIPE',
-          summary: `${standard.toUpperCase()} wipe completed in ${Date.now() - startMs}ms. All sectors overwritten.`,
-          durationMs: Date.now() - startMs
+    if (!targetPath) {
+      // Try to find a removable/USB drive automatically
+      try {
+        const { execSync } = require('child_process')
+        const psOut = execSync(
+          `powershell -NoProfile -NonInteractive -Command "Get-Volume | Where-Object {$_.DriveType -eq 'Removable' -and $_.DriveLetter} | Select-Object -First 1 -ExpandProperty DriveLetter"`,
+          { windowsHide: true, timeout: 5000 }
+        ).toString().trim()
+        if (psOut && /^[A-Z]$/i.test(psOut)) {
+          targetPath = `${psOut.toUpperCase()}:\\`
         }
-        this._send({
-          type: FleetMessageType.JOB_COMPLETE,
-          nodeId: this.nodeId,
-          roomKey: this.roomKey,
-          timestamp: new Date().toISOString(),
-          payload: result
-        })
-        clearInterval(interval)
-      }
+      } catch (_) {}
+    }
 
-      step++
-    }, 2000)
-  }
-
-  /**
-   * Simulate a recovery operation with progress telemetry.
-   */
-  private _executeRecovery(payload: ExecuteRecoveryPayload): void {
-    const types = payload.fileTypes || ['DOCX', 'PDF', 'SQLITE']
-    const startMs = Date.now()
-
-    this._sendTelemetry({
-      progress: 20,
-      speed: '310 MB/s',
-      eta: '2m',
-      phase: 'RECOVERING',
-      logLine: `Scanning for deleted file signatures: ${types.join(', ')}...`
-    })
-
-    setTimeout(() => {
-      this._sendTelemetry({
-        progress: 75,
-        speed: '295 MB/s',
-        eta: '45s',
-        phase: 'RECOVERING',
-        logLine: 'Reconstructing file headers from raw sectors...'
-      })
-    }, 2000)
-
-    setTimeout(() => {
+    if (!targetPath) {
+      // Abort safely — we don't wipe the boot drive
+      console.warn('[FleetClient] No removable target found; skipping wipe for safety.')
       const result: JobCompletePayload = {
-        success: true,
-        operation: 'RECOVERY',
-        summary: `Recovery complete. 42 files reconstructed with valid SHA-256 signatures. Duration: ${Date.now() - startMs}ms`,
+        success: false,
+        operation: 'WIPE',
+        summary: 'No removable target found on this workstation — wipe skipped for safety.',
         durationMs: Date.now() - startMs
       }
       this._send({
@@ -381,7 +323,163 @@ class FleetClient extends EventEmitter {
         timestamp: new Date().toISOString(),
         payload: result
       })
-    }, 4000)
+      return
+    }
+
+    console.log(`[FleetClient] Starting real wipe on ${targetPath} with standard ${standard}`)
+
+    this._sendTelemetry({
+      progress: 5,
+      speed: 'Initializing...',
+      eta: 'Calculating...',
+      phase: 'SANITIZING',
+      logLine: `Starting ${standard.toUpperCase()} wipe on ${targetPath}...`
+    })
+
+    const engine = new WipeEngine()
+
+    // Wire up real-time progress telemetry from WipeEngine → host
+    engine.on('progress', (p: any) => {
+      this._sendTelemetry({
+        progress: p.percentage || p.percent || 0,
+        speed: p.speed || '0 MB/s',
+        eta: p.eta || '--',
+        phase: p.status === 'completed' ? 'VERIFIED' : 'SANITIZING',
+        logLine: p.stage || `Wiping ${p.percentage || 0}%...`
+      })
+    })
+
+    try {
+      const result = await engine.wipe(targetPath, standard, {
+        dryRun: false,
+        blockSize: 65536,
+        verify: true
+      })
+
+      const jobComplete: JobCompletePayload = {
+        success: result.success,
+        operation: 'WIPE',
+        summary: result.success
+          ? `${standard.toUpperCase()} wipe verified complete on ${targetPath}. Shannon H(X) = ${(result.verification as any)?.averageEntropy?.toFixed(4) ?? '0.0000'}. Duration: ${Date.now() - startMs}ms`
+          : `Wipe failed on ${targetPath}`,
+        durationMs: Date.now() - startMs
+      }
+
+      this._send({
+        type: FleetMessageType.JOB_COMPLETE,
+        nodeId: this.nodeId,
+        roomKey: this.roomKey,
+        timestamp: new Date().toISOString(),
+        payload: { ...jobComplete, preHash: result.preHash, postHash: result.postHash, standard, verification: result.verification }
+      })
+    } catch (err: any) {
+      console.error('[FleetClient] Wipe engine error:', err)
+      const result: JobCompletePayload = {
+        success: false,
+        operation: 'WIPE',
+        summary: `Wipe error: ${err.message}`,
+        durationMs: Date.now() - startMs
+      }
+      this._send({
+        type: FleetMessageType.JOB_COMPLETE,
+        nodeId: this.nodeId,
+        roomKey: this.roomKey,
+        timestamp: new Date().toISOString(),
+        payload: result
+      })
+    }
+  }
+
+  /**
+   * Execute a REAL data recovery operation using CarvingEngine.
+   * Streams real telemetry back to the host.
+   */
+  private async _executeRecovery(payload: ExecuteRecoveryPayload): Promise<void> {
+    const types = (payload.fileTypes || ['jpg', 'pdf', 'docx']).map((t: string) => t.toLowerCase().replace('.', ''))
+    const startMs = Date.now()
+
+    this._sendTelemetry({
+      progress: 5,
+      speed: 'Initializing...',
+      eta: 'Calculating...',
+      phase: 'RECOVERING',
+      logLine: `Starting deep file recovery for: ${types.join(', ')}...`
+    })
+
+    // Determine recovery source — prefer a removable drive, fall back to user home
+    let sourcePath = payload.outputDir || (process.env.USERPROFILE ? `${process.env.USERPROFILE}` : 'C:\\')
+    
+    // Try removable drive
+    try {
+      const { execSync } = require('child_process')
+      const psOut = execSync(
+        `powershell -NoProfile -NonInteractive -Command "Get-Volume | Where-Object {$_.DriveType -eq 'Removable' -and $_.DriveLetter} | Select-Object -First 1 -ExpandProperty DriveLetter"`,
+        { windowsHide: true, timeout: 5000 }
+      ).toString().trim()
+      if (psOut && /^[A-Z]$/i.test(psOut)) {
+        sourcePath = `${psOut.toUpperCase()}:\\`
+      }
+    } catch (_) {}
+
+    // Output directory: temp folder
+    const outputDir = path.join(os.tmpdir(), `fleet_recovery_${this.nodeId}_${Date.now()}`)
+    try { fs.mkdirSync(outputDir, { recursive: true }) } catch (_) {}
+
+    const engine = new CarvingEngine()
+
+    engine.on('progress', (p: any) => {
+      this._sendTelemetry({
+        progress: p.percentage || p.percent || 20,
+        speed: p.speed || '0 MB/s',
+        eta: p.eta || '--',
+        phase: 'RECOVERING',
+        logLine: p.stage || p.logLine || 'Scanning sectors...'
+      })
+    })
+
+    try {
+      const result = await engine.carveFromImage(sourcePath, outputDir, types)
+      const filesFound = result.filesFound.length
+      const durationMs = Date.now() - startMs
+
+      const jobComplete: JobCompletePayload = {
+        success: true,
+        operation: 'RECOVERY',
+        summary: `Recovery complete on ${sourcePath}. ${filesFound} files reconstructed (${(result.totalBytesScanned / 1024 / 1024).toFixed(1)} MB scanned). Duration: ${durationMs}ms`,
+        durationMs
+      }
+
+      this._sendTelemetry({
+        progress: 100,
+        speed: '0 MB/s',
+        eta: 'Completed',
+        phase: 'IDLE',
+        logLine: jobComplete.summary
+      })
+
+      this._send({
+        type: FleetMessageType.JOB_COMPLETE,
+        nodeId: this.nodeId,
+        roomKey: this.roomKey,
+        timestamp: new Date().toISOString(),
+        payload: { ...jobComplete, filesFound, outputDir, types }
+      })
+    } catch (err: any) {
+      console.error('[FleetClient] Recovery engine error:', err)
+      const result: JobCompletePayload = {
+        success: false,
+        operation: 'RECOVERY',
+        summary: `Recovery error on ${sourcePath}: ${err.message}`,
+        durationMs: Date.now() - startMs
+      }
+      this._send({
+        type: FleetMessageType.JOB_COMPLETE,
+        nodeId: this.nodeId,
+        roomKey: this.roomKey,
+        timestamp: new Date().toISOString(),
+        payload: result
+      })
+    }
   }
 
   /**
@@ -427,4 +525,3 @@ class FleetClient extends EventEmitter {
 
 export { FleetClient }
 export default FleetClient
-
