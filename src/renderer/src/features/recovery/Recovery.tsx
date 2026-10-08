@@ -42,6 +42,7 @@ export default function Recovery() {
     selectedFleetNode,
     isJoinedClientNode,
     dispatchBatchRecovery,
+    selectedDrive,
     backToFleetOverview
   } = useCase()
 
@@ -199,6 +200,34 @@ export default function Recovery() {
   }, [])
 
   useEffect(() => {
+    if (!selectedFleetNode || isJoinedClientNode || !window.api) return
+    const unsubs: Array<(() => void) | void> = []
+    if (window.api.onFleetTelemetry) {
+      unsubs.push(window.api.onFleetTelemetry((data: any) => {
+        if (data.nodeId !== selectedFleetNode.id) return
+        const percent = data.telemetry.progress || 0
+        setProgress({
+          percentage: percent,
+          percent,
+          stage: data.telemetry.logLine,
+          phase: data.telemetry.phase,
+          speed: data.telemetry.speed,
+          eta: data.telemetry.eta
+        })
+        if (data.telemetry.phase === 'RECOVERING') setStatus('running')
+      }))
+    }
+    if (window.api.onFleetNodeComplete) {
+      unsubs.push(window.api.onFleetNodeComplete((data: any) => {
+        if (data.nodeId !== selectedFleetNode.id || data.result.operation !== 'RECOVERY') return
+        setStatus(data.result.success ? 'completed' : 'failed')
+        setProgress((previous: any) => ({ ...previous, percentage: 100, percent: 100, stage: data.result.summary, phase: data.result.success ? 'COMPLETED' : 'FAILED' }))
+      }))
+    }
+    return () => unsubs.forEach(unsub => typeof unsub === 'function' && unsub())
+  }, [selectedFleetNode?.id, isJoinedClientNode])
+
+  useEffect(() => {
     if (window.api?.onCarvingProgress) {
       window.api.onCarvingProgress((p: any) => {
         setProgress(p)
@@ -227,7 +256,8 @@ export default function Recovery() {
 
   // Start Carving
   const handleStart = async () => {
-    if (!sourcePath || !outputPath) return
+    const requestedRemoteSource = selectedDrive?.path || sourcePath
+    if ((!sourcePath && !requestedRemoteSource) || !outputPath) return
 
     setStatus('running')
     setProgress({
@@ -247,7 +277,7 @@ export default function Recovery() {
 
     if (selectedFleetNode && !isJoinedClientNode) {
       setStatus('running')
-      dispatchBatchRecovery(selectedTypes, selectedDrive?.path || sourcePath)
+      dispatchBatchRecovery(selectedTypes, requestedRemoteSource)
       return
     }
 

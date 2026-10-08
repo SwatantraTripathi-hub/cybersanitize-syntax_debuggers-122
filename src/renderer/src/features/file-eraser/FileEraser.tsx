@@ -9,6 +9,8 @@ export default function FileEraser() {
     drives,
     orchestrationMode,
     selectedFleetNode,
+    isJoinedClientNode,
+    dispatchBatchFileErase,
     backToFleetOverview
   } = useCase()
 
@@ -73,6 +75,33 @@ export default function FileEraser() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!selectedFleetNode || isJoinedClientNode || !window.api) return
+    const unsubs: Array<(() => void) | void> = []
+    if (window.api.onFleetTelemetry) {
+      unsubs.push(window.api.onFleetTelemetry((data: any) => {
+        if (data.nodeId !== selectedFleetNode.id) return
+        setProgress({
+          percent: data.telemetry.progress,
+          percentage: data.telemetry.progress,
+          stepName: data.telemetry.logLine,
+          status: data.telemetry.phase === 'ERASING' ? 'running' : data.telemetry.phase.toLowerCase()
+        })
+        if (data.telemetry.phase === 'ERASING') setStatus('running')
+      }))
+    }
+    if (window.api.onFleetNodeComplete) {
+      unsubs.push(window.api.onFleetNodeComplete((data: any) => {
+        if (data.nodeId !== selectedFleetNode.id || data.result.operation !== 'FILE_ERASE') return
+        setStatus(data.result.success ? 'completed' : 'failed')
+        setProgress({ percent: 100, percentage: 100, stepName: data.result.summary, status: data.result.success ? 'completed' : 'failed' })
+        if (data.result.success) setFiles([])
+        else setErrorMessage(data.result.summary)
+      }))
+    }
+    return () => unsubs.forEach(unsub => typeof unsub === 'function' && unsub())
+  }, [selectedFleetNode?.id, isJoinedClientNode])
+
   const handleStart = async () => {
     if (files.length === 0) return
     const isConfirmed = window.confirm(
@@ -90,6 +119,11 @@ export default function FileEraser() {
       filesProcessed: 0,
       totalFiles: files.length
     })
+
+    if (selectedFleetNode && !isJoinedClientNode) {
+      dispatchBatchFileErase(files.map(file => file.path), standard, cleanMetadata)
+      return
+    }
     
     if (window.api?.startFileErase) {
       try {

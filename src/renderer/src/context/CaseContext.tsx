@@ -46,7 +46,7 @@ export interface FleetNode {
   mac: string;
   model: string;
   storage: string;
-  status: 'ONLINE' | 'PRE-SCANNING' | 'SANITIZING' | 'RECOVERING' | 'VERIFIED' | 'FAILED' | 'IDLE';
+  status: 'ONLINE' | 'PRE-SCANNING' | 'SANITIZING' | 'RECOVERING' | 'ERASING' | 'VERIFIED' | 'FAILED' | 'IDLE';
   progress: number;
   speed: string;
   eta: string;
@@ -120,6 +120,7 @@ interface CaseContextType {
   dispatchBatchPreScan: () => void;
   dispatchBatchWipe: (standard?: string) => void;
   dispatchBatchRecovery: (types?: string[], sourcePath?: string) => void;
+  dispatchBatchFileErase: (paths: string[], standard?: string, cleanMetadata?: boolean) => void;
   selectFleetNodeForEngine: (node: FleetNode) => void;
   backToFleetOverview: () => void;
   backToLanding: () => void;
@@ -865,6 +866,31 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   };
 
+  const dispatchBatchFileErase = (paths: string[], standard = 'nist-clear', cleanMetadata = true) => {
+    if (window.api?.broadcastFileErase) {
+      const selectedIds = connectedNodes.filter(n => n.selected).map(n => n.id);
+      window.api.broadcastFileErase(paths, standard, cleanMetadata, selectedIds.length > 0 ? selectedIds : undefined)
+        .then((result: any) => { if (!result?.success) throw new Error(result?.error || 'No fleet node accepted the file-erasure request.') })
+        .catch((error: any) => {
+          console.error('[Fleet] File-erasure dispatch failed:', error);
+          setConnectedNodes(prev => prev.map(node => selectedIds.includes(node.id) ? {
+            ...node,
+            status: 'FAILED',
+            lastLog: `File-erasure dispatch failed: ${error.message || error}`
+          } : node));
+        });
+    }
+
+    setConnectedNodes(prev => prev.map(node => node.selected ? {
+      ...node,
+      status: 'ERASING',
+      progress: 5,
+      speed: 'Processing...',
+      eta: '--',
+      lastLog: `Securely erasing ${paths.length} selected target${paths.length === 1 ? '' : 's'}...`
+    } : node));
+  };
+
   const selectFleetNodeForEngine = (node: FleetNode) => {
     drivesOwnerRef.current = 'fleet';
     setSelectedFleetNode(node);
@@ -951,6 +977,7 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
         dispatchBatchPreScan,
         dispatchBatchWipe,
         dispatchBatchRecovery,
+        dispatchBatchFileErase,
         selectFleetNodeForEngine,
         backToFleetOverview,
         backToLanding

@@ -15,6 +15,7 @@ import { runPreScan } from "./preScanEngine";
 import { DriveService } from "../services/driveService";
 import { WipeEngine } from "../engines/wipeEngine";
 import { CarvingEngine } from "../engines/carvingEngine";
+import { FileEraseEngine } from "../engines/fileEraseEngine";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
@@ -25,6 +26,7 @@ import {
   type ExecuteRecoveryPayload,
   type TelemetryPayload,
   type JobCompletePayload,
+  type ExecuteFileErasePayload,
   type FleetDriveDescriptor,
 } from "./lobbyProtocol";
 
@@ -250,6 +252,10 @@ class FleetClient extends EventEmitter {
 
       case FleetMessageType.EXEC_RECOVERY:
         this._executeRecovery(packet.payload as ExecuteRecoveryPayload);
+        break;
+
+      case FleetMessageType.EXEC_FILE_ERASE:
+        this._executeFileErase(packet.payload as ExecuteFileErasePayload);
         break;
 
       case FleetMessageType.HEARTBEAT:
@@ -606,6 +612,70 @@ class FleetClient extends EventEmitter {
     }
   }
 
+  private async _executeFileErase(
+    payload: ExecuteFileErasePayload,
+  ): Promise<void> {
+    const startMs = Date.now();
+    const paths = Array.isArray(payload.paths)
+      ? payload.paths.filter(Boolean)
+      : [];
+    if (
+      paths.length === 0 ||
+      paths.some((targetPath) => !this.isPathOnKnownLocalDrive(targetPath))
+    ) {
+      await this.completeFailedJob(
+        "FILE_ERASE",
+        "Requested file targets are not available on this workstation.",
+      );
+      return;
+    }
+
+    const engine = new FileEraseEngine();
+    engine.on("progress", (progress: any) => {
+      this._sendTelemetry({
+        progress: progress.percent || 0,
+        speed: "Processing...",
+        eta: "--",
+        phase: progress.status === "completed" ? "IDLE" : "ERASING",
+        logLine:
+          progress.stepName ||
+          progress.currentFile ||
+          "Secure file erasure in progress...",
+      });
+    });
+
+    try {
+      let filesProcessed = 0;
+      let totalBytes = 0;
+      for (const targetPath of paths) {
+        const result = await (fs.statSync(targetPath).isDirectory()
+          ? engine.secureDeleteFolder(targetPath, payload.standard as any)
+          : engine.secureDeleteFile(targetPath, payload.standard as any));
+        filesProcessed += result.filesProcessed;
+        totalBytes += result.totalBytes;
+      }
+      const result: JobCompletePayload = {
+        success: filesProcessed > 0,
+        operation: "FILE_ERASE",
+        summary: `Securely erased ${filesProcessed} target${filesProcessed === 1 ? "" : "s"} on ${this.localNodeDetails?.hostname || "remote workstation"}.`,
+        durationMs: Date.now() - startMs,
+      };
+      this._send({
+        type: FleetMessageType.JOB_COMPLETE,
+        nodeId: this.nodeId,
+        roomKey: this.roomKey,
+        timestamp: new Date().toISOString(),
+        payload: { ...result, filesProcessed, totalBytes },
+      });
+      this.emit("completed", { nodeId: this.nodeId, result });
+    } catch (error: any) {
+      await this.completeFailedJob(
+        "FILE_ERASE",
+        `File erasure failed: ${error.message}`,
+      );
+    }
+  }
+
   private isKnownLocalDrive(targetPath: string): boolean {
     const normalized = targetPath.trim().toLowerCase();
     return this.localDrives.some(
@@ -613,8 +683,23 @@ class FleetClient extends EventEmitter {
     );
   }
 
+  private isPathOnKnownLocalDrive(targetPath: string): boolean {
+    const normalized = targetPath.trim().toLowerCase().replace(/\\/g, "/");
+    return this.localDrives.some((drive) => {
+      const drivePath = drive.path.trim().toLowerCase().replace(/\\/g, "/");
+      const driveLetter = drive.driveLetter?.trim().toLowerCase();
+      return (
+        normalized === drivePath ||
+        Boolean(
+          driveLetter &&
+          normalized.startsWith(`${driveLetter.replace(":", "")}:`),
+        )
+      );
+    });
+  }
+
   private async completeFailedJob(
-    operation: "WIPE" | "RECOVERY",
+    operation: "WIPE" | "RECOVERY" | "FILE_ERASE",
     summary: string,
   ): Promise<void> {
     const result: JobCompletePayload = {

@@ -186,6 +186,19 @@ const api = {
       nodeIds,
       sourcePathByNode,
     ),
+  broadcastFileErase: (
+    paths: string[],
+    standard: string,
+    cleanMetadata: boolean,
+    nodeIds?: string[],
+  ) =>
+    ipcRenderer.invoke(
+      "fleet:broadcast-file-erase",
+      paths,
+      standard,
+      cleanMetadata,
+      nodeIds,
+    ),
   closeLobby: () => ipcRenderer.invoke("fleet:close-lobby"),
   leaveFleetWorkspace: () => ipcRenderer.invoke("fleet:leave-client"),
   getFleetNodes: () => ipcRenderer.invoke("fleet:get-nodes"),
