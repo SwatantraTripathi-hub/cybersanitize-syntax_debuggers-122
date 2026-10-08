@@ -2,6 +2,10 @@ node_modules/
 dist/
 out/
 release/
+test-output*/
+test-image.dd
+*.img
+*.raw
 *.db
 *.db-shm
 *.db-wal
