@@ -2,7 +2,7 @@ import { app, BrowserWindow, shell } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import { registerAllIpc } from './ipc'
-import { VerificationServer } from './services/verificationServer'
+import { verificationServer } from './services/verificationServer'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -54,7 +54,7 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   // Start local sovereign verification authority
-  VerificationServer.getInstance().start(3847).catch(console.error)
+  verificationServer.start(3847).catch(console.error)
 
   createWindow()
 
@@ -64,7 +64,7 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
-  VerificationServer.getInstance().stop()
+  verificationServer.stop()
   if (process.platform !== 'darwin') {
     app.quit()
   }

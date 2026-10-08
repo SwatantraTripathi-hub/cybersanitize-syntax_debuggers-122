@@ -1,3 +1,2 @@
-import Reports from './Reports'
-export { Reports }
-export default Reports
+export { default as Reports } from './Reports'
+export { default as CertificateQRModal } from './components/CertificateQRModal'

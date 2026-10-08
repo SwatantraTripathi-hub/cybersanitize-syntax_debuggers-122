@@ -7,8 +7,6 @@ import {
   Layers,
   Cpu,
   CheckCircle2,
-  Briefcase,
-  FolderPlus,
   Play,
   ShieldCheck,
   Radio
@@ -35,11 +33,6 @@ export const OrchestrationLanding: React.FC = () => {
 
   const handleLaunchFleet = () => {
     setIsFleetCreateModalOpen(true)
-  }
-
-  const handleResumeWorkspace = (c: any) => {
-    setActiveCase(c)
-    setOrchestrationMode('SINGLE')
   }
 
   return (
@@ -219,44 +212,6 @@ export const OrchestrationLanding: React.FC = () => {
                 <span>Join Fleet</span>
               </button>
             </div>
-          </div>
-        </div>
-
-        {/* Recent Workspaces Quick-Resume Section */}
-        <div className="bg-white border border-atlas-border rounded-xl p-6 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Briefcase className="w-4 h-4 text-atlas-forest" />
-              <h3 className="font-bold text-sm text-atlas-navy">Recent Workspaces</h3>
-            </div>
-            <button
-              onClick={() => setIsCaseModalOpen(true)}
-              className="text-xs text-atlas-forest hover:underline font-semibold flex items-center gap-1"
-            >
-              <FolderPlus className="w-3.5 h-3.5" />
-              <span>New Workspace</span>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {caseList.slice(0, 4).map((c) => (
-              <div
-                key={c.caseId}
-                onClick={() => handleResumeWorkspace(c)}
-                className="p-3.5 rounded-lg border border-atlas-border hover:border-atlas-bordergreen hover:bg-atlas-lightgreen/30 transition cursor-pointer flex items-center justify-between group"
-              >
-                <div className="space-y-0.5 truncate pr-3">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-atlas-forest">{c.caseId}</span>
-                    <span className="text-[10px] text-atlas-muted bg-atlas-bg px-2 py-0.2 rounded border border-atlas-border">{c.evidenceTag}</span>
-                  </div>
-                  <div className="text-xs font-semibold text-atlas-navy truncate">{c.title}</div>
-                </div>
-                <button className="px-3 py-1 rounded-md text-xs font-semibold text-atlas-forest bg-atlas-lightgreen border border-atlas-bordergreen group-hover:bg-atlas-forest group-hover:text-white transition shrink-0">
-                  Open
-                </button>
-              </div>
-            ))}
           </div>
         </div>
       </main>
