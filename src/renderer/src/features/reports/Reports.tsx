@@ -67,7 +67,7 @@ export default function Reports() {
     setQrModalDataUrl(null)
     if (window.api?.getQrDataUrl) {
       const payloadToEncode = mode === 'url'
-        ? (r.verifyUrl || `http://10.112.136.85:3847/verify?ref=${encodeURIComponent(r.certRef)}`)
+        ? r.verifyUrl
         : (r.qrPayload || r.certRef)
       const url = await window.api.getQrDataUrl(payloadToEncode, { width: 320, margin: 2 })
       setQrModalDataUrl(url)

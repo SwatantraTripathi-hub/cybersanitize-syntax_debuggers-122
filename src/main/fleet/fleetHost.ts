@@ -391,6 +391,7 @@ class FleetHost extends EventEmitter {
     fileTypes: string[],
     nodeIds?: string[],
     sourcePathByNode?: Record<string, string>,
+    outputDirByNode?: Record<string, string>,
   ): number {
     const targets = nodeIds || Array.from(this.sockets.keys());
     let dispatched = 0;
@@ -398,6 +399,7 @@ class FleetHost extends EventEmitter {
       const payload: ExecuteRecoveryPayload = {
         fileTypes,
         sourcePath: sourcePathByNode?.[nodeId],
+        outputDir: outputDirByNode?.[nodeId],
       };
       dispatched += this._broadcastToNodes(
         [nodeId],

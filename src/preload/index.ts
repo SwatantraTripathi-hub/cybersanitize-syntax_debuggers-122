@@ -179,12 +179,14 @@ const api = {
     fileTypes: string[],
     nodeIds?: string[],
     sourcePathByNode?: Record<string, string>,
+    outputDirByNode?: Record<string, string>,
   ) =>
     ipcRenderer.invoke(
       "fleet:broadcast-recovery",
       fileTypes,
       nodeIds,
       sourcePathByNode,
+      outputDirByNode,
     ),
   broadcastFileErase: (
     paths: string[],
@@ -199,6 +201,8 @@ const api = {
       cleanMetadata,
       nodeIds,
     ),
+  saveRecoveredFiles: (destinationDir: string, files: any[]) =>
+    ipcRenderer.invoke("fleet:save-recovered-files", destinationDir, files),
   closeLobby: () => ipcRenderer.invoke("fleet:close-lobby"),
   leaveFleetWorkspace: () => ipcRenderer.invoke("fleet:leave-client"),
   getFleetNodes: () => ipcRenderer.invoke("fleet:get-nodes"),

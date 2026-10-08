@@ -3,6 +3,8 @@ import { FleetHost } from "../fleet/fleetHost";
 import { FleetClient } from "../fleet/fleetClient";
 import { discoverFleetHost } from "../fleet/fleetDiscovery";
 import { AuditService } from "../services/auditService";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 
 let fleetHostInstance: FleetHost | null = null;
 let fleetClientInstance: FleetClient | null = null;
@@ -230,12 +232,14 @@ export function registerFleetIpc(
       fileTypes: string[],
       nodeIds?: string[],
       sourcePathByNode?: Record<string, string>,
+      outputDirByNode?: Record<string, string>,
     ) => {
       if (fleetHostInstance) {
         const dispatched = fleetHostInstance.broadcastRecovery(
           fileTypes,
           nodeIds,
           sourcePathByNode,
+          outputDirByNode,
         );
         return {
           success: dispatched > 0,
@@ -277,6 +281,46 @@ export function registerFleetIpc(
         };
       }
       return { success: false, error: "Fleet host not running" };
+    },
+  );
+
+  ipcMain.handle(
+    "fleet:save-recovered-files",
+    async (
+      _,
+      destinationDir: string,
+      files: Array<{ name?: string; outputPath?: string; dataBase64?: string }>,
+    ) => {
+      if (!destinationDir || !Array.isArray(files)) {
+        return {
+          success: false,
+          error: "A destination directory and recovered files are required.",
+        };
+      }
+      try {
+        await fs.mkdir(destinationDir, { recursive: true });
+        const savedPaths: string[] = [];
+        for (const file of files) {
+          if (!file.dataBase64) continue;
+          const safeName = path.basename(
+            file.name ||
+              file.outputPath ||
+              `recovered-${savedPaths.length + 1}`,
+          );
+          const targetPath = path.join(destinationDir, safeName);
+          await fs.writeFile(
+            targetPath,
+            Buffer.from(file.dataBase64, "base64"),
+          );
+          savedPaths.push(targetPath);
+        }
+        return { success: true, savedPaths };
+      } catch (error: any) {
+        return {
+          success: false,
+          error: error.message || "Could not save recovered files.",
+        };
+      }
     },
   );
 

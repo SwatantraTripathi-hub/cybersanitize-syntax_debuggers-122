@@ -584,6 +584,18 @@ class FleetClient extends EventEmitter {
         outputDir,
       };
 
+      const recoveredFiles = result.filesFound.map((file: any) => {
+        try {
+          return {
+            ...file,
+            dataBase64: fs.readFileSync(file.outputPath).toString("base64"),
+          };
+        } catch (_) {
+          return file;
+        }
+      });
+      jobComplete.recoveredFiles = recoveredFiles;
+
       this._sendTelemetry({
         progress: 100,
         speed: "0 MB/s",

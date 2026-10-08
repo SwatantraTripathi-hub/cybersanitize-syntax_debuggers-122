@@ -119,7 +119,7 @@ interface CaseContextType {
   selectAllNodes: (selected: boolean) => void;
   dispatchBatchPreScan: () => void;
   dispatchBatchWipe: (standard?: string) => void;
-  dispatchBatchRecovery: (types?: string[], sourcePath?: string) => void;
+  dispatchBatchRecovery: (types?: string[], sourcePath?: string, outputDir?: string) => void;
   dispatchBatchFileErase: (paths: string[], standard?: string, cleanMetadata?: boolean) => void;
   selectFleetNodeForEngine: (node: FleetNode) => void;
   backToFleetOverview: () => void;
@@ -835,7 +835,7 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   };
 
-  const dispatchBatchRecovery = (types = ['DOCX', 'PDF', 'SQLITE'], sourcePath?: string) => {
+  const dispatchBatchRecovery = (types = ['DOCX', 'PDF', 'SQLITE'], sourcePath?: string, outputDir?: string) => {
     // Dispatch real IPC broadcast to connected fleet nodes
     if (window.api?.broadcastRecovery) {
       const selectedIds = connectedNodes.filter(n => n.selected).map(n => n.id);
@@ -844,7 +844,10 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .map(node => [node.id, node.drives?.find(drive => drive.isRemovable && !drive.isBoot)?.path])
         .filter((entry): entry is [string, string] => Boolean(entry[1])));
       if (selectedFleetNode && (sourcePath || selectedDrive?.path)) sourcePathByNode[selectedFleetNode.id] = sourcePath || selectedDrive.path;
-      window.api.broadcastRecovery(types, selectedIds.length > 0 ? selectedIds : undefined, Object.keys(sourcePathByNode).length ? sourcePathByNode : undefined)
+      const outputDirByNode = selectedFleetNode && outputDir
+        ? { [selectedFleetNode.id]: outputDir }
+        : undefined;
+      window.api.broadcastRecovery(types, selectedIds.length > 0 ? selectedIds : undefined, Object.keys(sourcePathByNode).length ? sourcePathByNode : undefined, outputDirByNode)
         .then((result: any) => { if (!result?.success) throw new Error(result?.error || 'No fleet node accepted the recovery request.') })
         .catch((error: any) => {
           console.error('[Fleet] Recovery dispatch failed:', error);
