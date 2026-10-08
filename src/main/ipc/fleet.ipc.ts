@@ -48,25 +48,30 @@ export function registerFleetIpc(
             const result = data.result;
             const node = fleetHostInstance?.getNode(data.nodeId);
             const workspace = fleetHostInstance?.getWorkspaceMeta();
-            const operation = result.operation === "RECOVERY"
-              ? "FILE_RECOVERY"
-              : "DRIVE_WIPE";
+            const operation =
+              result.operation === "RECOVERY" ? "FILE_RECOVERY" : "DRIVE_WIPE";
             auditService.logOperation({
               timestamp: new Date().toISOString(),
               operation,
               target: `Fleet Node: ${data.nodeId || "Node"} (${node?.hostname || node?.ip || "Remote"})`,
               details: {
-                caseId: workspace?.caseId || `FLEET-${fleetHostInstance?.getRoomKey() || "UNKNOWN"}`,
+                caseId:
+                  workspace?.caseId ||
+                  `FLEET-${fleetHostInstance?.getRoomKey() || "UNKNOWN"}`,
                 caseTitle: workspace?.title || "Fleet Workspace",
                 evidenceTag: workspace?.evidenceTag || "FLEET-EVIDENCE",
-                authorizingOfficer: workspace?.authorizingOfficer || "Fleet Orchestrator",
+                authorizingOfficer:
+                  workspace?.authorizingOfficer || "Fleet Orchestrator",
                 systemHost: node?.hostname || data.nodeId,
                 nodeId: data.nodeId,
                 ip: node?.ip,
                 summary: result.summary,
                 status: result.success ? "COMPLETED" : "FAILED",
                 operation: result.operation,
-                standard: (result as any).standard || workspace?.selectedOptions?.wipeStandard || "nist-clear",
+                standard:
+                  (result as any).standard ||
+                  workspace?.selectedOptions?.wipeStandard ||
+                  "nist-clear",
                 fleetCluster: true,
               },
               status: result.success ? "VERIFIED" : "FAILED",
@@ -160,20 +165,32 @@ export function registerFleetIpc(
   });
 
   // 3. Broadcast Pre-Scan
-  ipcMain.handle("fleet:broadcast-prescan", async (_, nodeIds?: string[]) => {
-    if (fleetHostInstance) {
-      fleetHostInstance.broadcastPreScan(nodeIds);
-      return { success: true };
-    }
-    return { success: false, error: "Fleet host not running" };
-  });
+  ipcMain.handle(
+    "fleet:broadcast-prescan",
+    async (
+      _,
+      nodeIds?: string[],
+      targetPathByNode?: Record<string, string>,
+    ) => {
+      if (fleetHostInstance) {
+        fleetHostInstance.broadcastPreScan(nodeIds, targetPathByNode);
+        return { success: true };
+      }
+      return { success: false, error: "Fleet host not running" };
+    },
+  );
 
   // 4. Broadcast Wipe
   ipcMain.handle(
     "fleet:broadcast-wipe",
-    async (_, standard: string, nodeIds?: string[]) => {
+    async (
+      _,
+      standard: string,
+      nodeIds?: string[],
+      targetPathByNode?: Record<string, string>,
+    ) => {
       if (fleetHostInstance) {
-        fleetHostInstance.broadcastWipe(standard, nodeIds);
+        fleetHostInstance.broadcastWipe(standard, nodeIds, targetPathByNode);
         return { success: true };
       }
       return { success: false, error: "Fleet host not running" };
@@ -183,9 +200,18 @@ export function registerFleetIpc(
   // 5. Broadcast Recovery
   ipcMain.handle(
     "fleet:broadcast-recovery",
-    async (_, fileTypes: string[], nodeIds?: string[]) => {
+    async (
+      _,
+      fileTypes: string[],
+      nodeIds?: string[],
+      sourcePathByNode?: Record<string, string>,
+    ) => {
       if (fleetHostInstance) {
-        fleetHostInstance.broadcastRecovery(fileTypes, nodeIds);
+        fleetHostInstance.broadcastRecovery(
+          fileTypes,
+          nodeIds,
+          sourcePathByNode,
+        );
         return { success: true };
       }
       return { success: false, error: "Fleet host not running" };

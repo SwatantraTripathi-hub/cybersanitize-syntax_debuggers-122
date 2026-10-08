@@ -12,6 +12,7 @@ import { EventEmitter } from "node:events";
 import { WebSocket } from "ws";
 import * as os from "node:os";
 import { runPreScan } from "./preScanEngine";
+import { DriveService } from "../services/driveService";
 import { WipeEngine } from "../engines/wipeEngine";
 import { CarvingEngine } from "../engines/carvingEngine";
 import * as fs from "node:fs";
@@ -24,6 +25,7 @@ import {
   type ExecuteRecoveryPayload,
   type TelemetryPayload,
   type JobCompletePayload,
+  type FleetDriveDescriptor,
 } from "./lobbyProtocol";
 
 export interface FleetClientEvents {
@@ -54,6 +56,7 @@ class FleetClient extends EventEmitter {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private localNodeDetails: JoinRoomPayload | null = null;
   private workspaceMeta: any = null;
+  private localDrives: FleetDriveDescriptor[] = [];
 
   /**
    * Connect to a fleet host and send JOIN_ROOM.
@@ -98,7 +101,7 @@ class FleetClient extends EventEmitter {
         }
       }, 10_000);
 
-      ws.on("open", () => {
+      ws.on("open", async () => {
         console.log(`[FleetClient] Connected to ${url}`);
         this.emit("connected");
 
@@ -118,6 +121,18 @@ class FleetClient extends EventEmitter {
           }
         }
 
+        try {
+          this.localDrives = (await DriveService.getInstance().detectDrives(
+            true,
+          )) as FleetDriveDescriptor[];
+        } catch (error) {
+          console.warn(
+            "[FleetClient] Could not inventory local drives:",
+            error,
+          );
+          this.localDrives = [];
+        }
+
         const payload: JoinRoomPayload = {
           nodeId,
           hostname: nodeDetails?.hostname || os.hostname(),
@@ -126,6 +141,7 @@ class FleetClient extends EventEmitter {
           model: nodeDetails?.model || `${os.type()} ${os.arch()}`,
           storage: nodeDetails?.storage || "Local storage (inventory pending)",
           platform: process.platform,
+          drives: this.localDrives,
         };
         this.localNodeDetails = payload;
 
@@ -142,8 +158,13 @@ class FleetClient extends EventEmitter {
         try {
           const packet: FleetPacket = JSON.parse(raw.toString());
 
-          if (packet.roomKey !== this.roomKey) {
-            console.warn(`[FleetClient] Ignoring packet for another fleet room: ${packet.roomKey}`);
+          if (
+            packet.roomKey !== this.roomKey &&
+            packet.type !== FleetMessageType.ROOM_REJECTED
+          ) {
+            console.warn(
+              `[FleetClient] Ignoring packet for another fleet room: ${packet.roomKey}`,
+            );
             return;
           }
 
@@ -218,7 +239,9 @@ class FleetClient extends EventEmitter {
         break;
 
       case FleetMessageType.PRE_SCAN_REQ:
-        this._executPreScan();
+        this._executPreScan(
+          (packet.payload as { targetPath?: string })?.targetPath,
+        );
         break;
 
       case FleetMessageType.EXEC_WIPE:
@@ -252,21 +275,23 @@ class FleetClient extends EventEmitter {
 
   private findRemovableVolume(): string | null {
     try {
-      const { execSync } = require('node:child_process')
+      const { execSync } = require("node:child_process");
       const drive = execSync(
         `powershell -NoProfile -NonInteractive -Command "Get-Volume | Where-Object {$_.DriveType -eq 'Removable' -and $_.DriveLetter} | Select-Object -First 1 -ExpandProperty DriveLetter"`,
-        { windowsHide: true, timeout: 5000 }
-      ).toString().trim()
-      return /^[A-Z]$/i.test(drive) ? `${drive.toUpperCase()}:\\` : null
+        { windowsHide: true, timeout: 5000 },
+      )
+        .toString()
+        .trim();
+      return /^[A-Z]$/i.test(drive) ? `${drive.toUpperCase()}:\\` : null;
     } catch {
-      return null
+      return null;
     }
   }
 
   /**
    * Execute a non-destructive pre-scan and stream results back.
    */
-  private async _executPreScan(): Promise<void> {
+  private async _executPreScan(requestedTargetPath?: string): Promise<void> {
     const startMs = Date.now();
 
     // Send initial telemetry
@@ -279,8 +304,14 @@ class FleetClient extends EventEmitter {
     });
 
     try {
-      const targetPath = this.findRemovableVolume()
-      if (!targetPath) throw new Error('No removable evidence volume was found for pre-scan.')
+      const targetPath = requestedTargetPath || this.findRemovableVolume();
+      if (requestedTargetPath && !this.isKnownLocalDrive(requestedTargetPath)) {
+        throw new Error(
+          `Requested scan target is not an available drive on this workstation: ${requestedTargetPath}`,
+        );
+      }
+      if (!targetPath)
+        throw new Error("No removable evidence volume was found for pre-scan.");
       const findings = await runPreScan(targetPath);
 
       this._sendTelemetry({
@@ -338,6 +369,14 @@ class FleetClient extends EventEmitter {
     // Determine the target: use provided targetPath, or detect the primary
     // non-boot removable drive. Fall back to user home dir parent for safety.
     let targetPath = payload.targetPath;
+
+    if (targetPath && !this.isKnownLocalDrive(targetPath)) {
+      await this.completeFailedJob(
+        "WIPE",
+        `Requested target is not an available drive on this workstation: ${targetPath}`,
+      );
+      return;
+    }
 
     if (!targetPath) {
       // Try to find a removable/USB drive automatically
@@ -472,23 +511,31 @@ class FleetClient extends EventEmitter {
       logLine: `Starting deep file recovery for: ${types.join(", ")}...`,
     });
 
-    const sourcePath = payload.sourcePath || this.findRemovableVolume()
+    const sourcePath = payload.sourcePath || this.findRemovableVolume();
+    if (payload.sourcePath && !this.isKnownLocalDrive(payload.sourcePath)) {
+      await this.completeFailedJob(
+        "RECOVERY",
+        `Requested source is not an available drive on this workstation: ${payload.sourcePath}`,
+      );
+      return;
+    }
     if (!sourcePath) {
       const result: JobCompletePayload = {
         success: false,
         operation: "RECOVERY",
-        summary: "No removable evidence volume found — recovery skipped for safety.",
+        summary:
+          "No removable evidence volume found — recovery skipped for safety.",
         durationMs: Date.now() - startMs,
-      }
+      };
       this._send({
         type: FleetMessageType.JOB_COMPLETE,
         nodeId: this.nodeId,
         roomKey: this.roomKey,
         timestamp: new Date().toISOString(),
         payload: result,
-      })
-      this.emit("completed", { nodeId: this.nodeId, result })
-      return
+      });
+      this.emit("completed", { nodeId: this.nodeId, result });
+      return;
     }
 
     // Output directory: temp folder
@@ -557,6 +604,33 @@ class FleetClient extends EventEmitter {
       });
       this.emit("completed", { nodeId: this.nodeId, result });
     }
+  }
+
+  private isKnownLocalDrive(targetPath: string): boolean {
+    const normalized = targetPath.trim().toLowerCase();
+    return this.localDrives.some(
+      (drive) => drive.path.trim().toLowerCase() === normalized,
+    );
+  }
+
+  private async completeFailedJob(
+    operation: "WIPE" | "RECOVERY",
+    summary: string,
+  ): Promise<void> {
+    const result: JobCompletePayload = {
+      success: false,
+      operation,
+      summary,
+      durationMs: 0,
+    };
+    this._send({
+      type: FleetMessageType.JOB_COMPLETE,
+      nodeId: this.nodeId,
+      roomKey: this.roomKey,
+      timestamp: new Date().toISOString(),
+      payload: result,
+    });
+    this.emit("completed", { nodeId: this.nodeId, result });
   }
 
   /**

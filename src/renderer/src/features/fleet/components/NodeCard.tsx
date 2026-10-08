@@ -122,6 +122,21 @@ export const NodeCard: React.FC<NodeCardProps> = ({
           </div>
         </div>
 
+        {node.drives?.length > 0 && (
+          <div className="rounded-lg border border-atlas-border bg-white p-2.5 space-y-1.5">
+            <span className="text-[9px] uppercase tracking-wider font-bold text-atlas-muted">
+              Available Internal & External Targets
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {node.drives.map((drive) => (
+                <span key={`${drive.path}-${drive.number}`} className="px-2 py-1 rounded border border-atlas-border bg-atlas-bg text-[10px] font-mono text-atlas-navy" title={drive.path}>
+                  {drive.friendlyName} {drive.isRemovable ? '(External)' : '(Internal)'}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Real-time Progress Bar (if active) */}
         {(node.status === 'SANITIZING' || node.status === 'PRE-SCANNING' || node.status === 'RECOVERING' || node.progress > 0) && (
           <div className="space-y-1.5 pt-1">

@@ -26,6 +26,7 @@ import {
   type JobCompletePayload,
   type ExecuteWipePayload,
   type ExecuteRecoveryPayload,
+  type FleetDriveDescriptor,
 } from "./lobbyProtocol";
 
 export interface FleetHostEvents {
@@ -151,12 +152,25 @@ class FleetHost extends EventEmitter {
         const packet: FleetPacket = JSON.parse(raw.toString());
 
         if (packet.roomKey !== this.activeRoomKey) {
-          console.warn(`[FleetHost] Rejecting packet for invalid room: ${packet.roomKey}`);
+          console.warn(
+            `[FleetHost] Rejecting packet for invalid room: ${packet.roomKey}`,
+          );
+          if (packet.type === FleetMessageType.JOIN_ROOM) {
+            this._send(ws, {
+              type: FleetMessageType.ROOM_REJECTED,
+              nodeId: "host",
+              roomKey: this.activeRoomKey,
+              timestamp: new Date().toISOString(),
+              payload: { reason: "Invalid room key" },
+            });
+          }
           ws.close();
           return;
         }
         if (registeredNodeId && packet.nodeId !== registeredNodeId) {
-          console.warn(`[FleetHost] Rejecting packet with mismatched node identity: ${packet.nodeId}`);
+          console.warn(
+            `[FleetHost] Rejecting packet with mismatched node identity: ${packet.nodeId}`,
+          );
           ws.close();
           return;
         }
@@ -177,6 +191,7 @@ class FleetHost extends EventEmitter {
               mac: payload.mac,
               model: payload.model,
               storage: payload.storage,
+              drives: payload.drives || [],
               platform: payload.platform,
               connectedAt: new Date().toISOString(),
               status: "ONLINE",
@@ -317,8 +332,16 @@ class FleetHost extends EventEmitter {
   /**
    * Broadcast a PRE_SCAN_REQ to all connected (selected) nodes.
    */
-  broadcastPreScan(nodeIds?: string[]): void {
-    this._broadcastToNodes(nodeIds, FleetMessageType.PRE_SCAN_REQ, {});
+  broadcastPreScan(
+    nodeIds?: string[],
+    targetPathByNode?: Record<string, string>,
+  ): void {
+    const targets = nodeIds || Array.from(this.sockets.keys());
+    for (const nodeId of targets) {
+      this._broadcastToNodes([nodeId], FleetMessageType.PRE_SCAN_REQ, {
+        targetPath: targetPathByNode?.[nodeId],
+      });
+    }
     console.log(
       `[FleetHost] Pre-scan request broadcast to ${nodeIds?.length ?? this.nodes.size} nodes`,
     );
@@ -327,9 +350,19 @@ class FleetHost extends EventEmitter {
   /**
    * Broadcast an EXEC_WIPE command to selected nodes.
    */
-  broadcastWipe(standard: string, nodeIds?: string[]): void {
-    const payload: ExecuteWipePayload = { standard };
-    this._broadcastToNodes(nodeIds, FleetMessageType.EXEC_WIPE, payload);
+  broadcastWipe(
+    standard: string,
+    nodeIds?: string[],
+    targetPathByNode?: Record<string, string>,
+  ): void {
+    const targets = nodeIds || Array.from(this.sockets.keys());
+    for (const nodeId of targets) {
+      const payload: ExecuteWipePayload = {
+        standard,
+        targetPath: targetPathByNode?.[nodeId],
+      };
+      this._broadcastToNodes([nodeId], FleetMessageType.EXEC_WIPE, payload);
+    }
     console.log(
       `[FleetHost] Wipe (${standard}) broadcast to ${nodeIds?.length ?? this.nodes.size} nodes`,
     );
@@ -338,9 +371,19 @@ class FleetHost extends EventEmitter {
   /**
    * Broadcast an EXEC_RECOVERY command to selected nodes.
    */
-  broadcastRecovery(fileTypes: string[], nodeIds?: string[]): void {
-    const payload: ExecuteRecoveryPayload = { fileTypes };
-    this._broadcastToNodes(nodeIds, FleetMessageType.EXEC_RECOVERY, payload);
+  broadcastRecovery(
+    fileTypes: string[],
+    nodeIds?: string[],
+    sourcePathByNode?: Record<string, string>,
+  ): void {
+    const targets = nodeIds || Array.from(this.sockets.keys());
+    for (const nodeId of targets) {
+      const payload: ExecuteRecoveryPayload = {
+        fileTypes,
+        sourcePath: sourcePathByNode?.[nodeId],
+      };
+      this._broadcastToNodes([nodeId], FleetMessageType.EXEC_RECOVERY, payload);
+    }
   }
 
   /**
