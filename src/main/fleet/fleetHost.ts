@@ -150,22 +150,20 @@ class FleetHost extends EventEmitter {
       try {
         const packet: FleetPacket = JSON.parse(raw.toString());
 
+        if (packet.roomKey !== this.activeRoomKey) {
+          console.warn(`[FleetHost] Rejecting packet for invalid room: ${packet.roomKey}`);
+          ws.close();
+          return;
+        }
+        if (registeredNodeId && packet.nodeId !== registeredNodeId) {
+          console.warn(`[FleetHost] Rejecting packet with mismatched node identity: ${packet.nodeId}`);
+          ws.close();
+          return;
+        }
+
         switch (packet.type) {
           case FleetMessageType.JOIN_ROOM: {
             const payload = packet.payload as JoinRoomPayload;
-
-            // Reject if room key doesn't match
-            if (packet.roomKey !== this.activeRoomKey) {
-              this._send(ws, {
-                type: FleetMessageType.ROOM_REJECTED,
-                nodeId: "host",
-                roomKey: this.activeRoomKey,
-                timestamp: new Date().toISOString(),
-                payload: { reason: "Invalid room key" },
-              });
-              ws.close();
-              return;
-            }
 
             registeredNodeId = payload.nodeId;
             const previousSocket = this.sockets.get(payload.nodeId);

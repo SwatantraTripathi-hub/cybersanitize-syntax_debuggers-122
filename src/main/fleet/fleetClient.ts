@@ -142,6 +142,11 @@ class FleetClient extends EventEmitter {
         try {
           const packet: FleetPacket = JSON.parse(raw.toString());
 
+          if (packet.roomKey !== this.roomKey) {
+            console.warn(`[FleetClient] Ignoring packet for another fleet room: ${packet.roomKey}`);
+            return;
+          }
+
           if (packet.type === FleetMessageType.ROOM_ACCEPTED) {
             const accepted = packet.payload as any;
             this.workspaceMeta = accepted.workspaceMeta || null;
@@ -245,6 +250,19 @@ class FleetClient extends EventEmitter {
     }
   }
 
+  private findRemovableVolume(): string | null {
+    try {
+      const { execSync } = require('node:child_process')
+      const drive = execSync(
+        `powershell -NoProfile -NonInteractive -Command "Get-Volume | Where-Object {$_.DriveType -eq 'Removable' -and $_.DriveLetter} | Select-Object -First 1 -ExpandProperty DriveLetter"`,
+        { windowsHide: true, timeout: 5000 }
+      ).toString().trim()
+      return /^[A-Z]$/i.test(drive) ? `${drive.toUpperCase()}:\\` : null
+    } catch {
+      return null
+    }
+  }
+
   /**
    * Execute a non-destructive pre-scan and stream results back.
    */
@@ -261,8 +279,8 @@ class FleetClient extends EventEmitter {
     });
 
     try {
-      // Run actual pre-scan on the user home directory (safe, read-only)
-      const targetPath = process.env.HOME || process.env.USERPROFILE || "C:\\";
+      const targetPath = this.findRemovableVolume()
+      if (!targetPath) throw new Error('No removable evidence volume was found for pre-scan.')
       const findings = await runPreScan(targetPath);
 
       this._sendTelemetry({
@@ -284,15 +302,14 @@ class FleetClient extends EventEmitter {
       this.emit("prescan_ready", { nodeId: this.nodeId, findings });
     } catch (err) {
       console.error("[FleetClient] Pre-scan error:", err);
-      // Send a fallback result
       const findings = {
-        filesFound: 3840,
-        docs: 920,
-        media: 2600,
-        databases: 320,
-        entropy: 7.42,
-        safeToWipe: true,
-        driveLabel: "Local Storage",
+        filesFound: 0,
+        docs: 0,
+        media: 0,
+        databases: 0,
+        entropy: 0,
+        safeToWipe: false,
+        driveLabel: "UNAVAILABLE",
         scannedAt: new Date().toISOString(),
       };
       this._send({
@@ -455,24 +472,24 @@ class FleetClient extends EventEmitter {
       logLine: `Starting deep file recovery for: ${types.join(", ")}...`,
     });
 
-    // Determine recovery source — prefer a removable drive, fall back to user home
-    let sourcePath =
-      payload.outputDir ||
-      (process.env.USERPROFILE ? `${process.env.USERPROFILE}` : "C:\\");
-
-    // Try removable drive
-    try {
-      const { execSync } = require("child_process");
-      const psOut = execSync(
-        `powershell -NoProfile -NonInteractive -Command "Get-Volume | Where-Object {$_.DriveType -eq 'Removable' -and $_.DriveLetter} | Select-Object -First 1 -ExpandProperty DriveLetter"`,
-        { windowsHide: true, timeout: 5000 },
-      )
-        .toString()
-        .trim();
-      if (psOut && /^[A-Z]$/i.test(psOut)) {
-        sourcePath = `${psOut.toUpperCase()}:\\`;
+    const sourcePath = payload.sourcePath || this.findRemovableVolume()
+    if (!sourcePath) {
+      const result: JobCompletePayload = {
+        success: false,
+        operation: "RECOVERY",
+        summary: "No removable evidence volume found — recovery skipped for safety.",
+        durationMs: Date.now() - startMs,
       }
-    } catch (_) {}
+      this._send({
+        type: FleetMessageType.JOB_COMPLETE,
+        nodeId: this.nodeId,
+        roomKey: this.roomKey,
+        timestamp: new Date().toISOString(),
+        payload: result,
+      })
+      this.emit("completed", { nodeId: this.nodeId, result })
+      return
+    }
 
     // Output directory: temp folder
     const outputDir = path.join(

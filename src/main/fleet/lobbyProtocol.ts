@@ -68,6 +68,7 @@ export interface ExecuteWipePayload {
 
 export interface ExecuteRecoveryPayload {
   fileTypes: string[]
+  sourcePath?: string
   outputDir?: string
 }
 

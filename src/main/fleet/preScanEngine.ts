@@ -91,25 +91,25 @@ export async function runPreScan(targetPath: string): Promise<PreScanFindingsPay
   // 1. Try to read MBR sector for entropy measurement
   let entropy = 0
   const sector = readFirstSector(targetPath)
+  let scanReadable = Boolean(sector && sector.length > 0)
   if (sector && sector.length > 0) {
     entropy = calculateEntropy(sector)
   }
 
   // 2. File count estimation (works best on directory paths)
   const isDirPath = !targetPath.startsWith('\\\\')
-  const counts = isDirPath
-    ? estimateFileCounts(targetPath)
-    : {
-        // For physical drives we can't enumerate easily — use plausible defaults
-        total: Math.floor(1000 + Math.random() * 8000),
-        docs: Math.floor(200 + Math.random() * 2000),
-        media: Math.floor(500 + Math.random() * 5000),
-        databases: Math.floor(50 + Math.random() * 500)
-      }
-
-  // If entropy is 0 (e.g. no sector read), generate a plausible value
-  if (entropy === 0) {
-    entropy = 5.5 + Math.random() * 2.2
+  const counts = isDirPath ? estimateFileCounts(targetPath) : {
+    total: 0,
+    docs: 0,
+    media: 0,
+    databases: 0
+  }
+  if (isDirPath) {
+    try {
+      fs.readdirSync(targetPath)
+    } catch {
+      scanReadable = false
+    }
   }
 
   const durationMs = Date.now() - startMs
@@ -121,7 +121,7 @@ export async function runPreScan(targetPath: string): Promise<PreScanFindingsPay
     media: counts.media,
     databases: counts.databases,
     entropy: parseFloat(entropy.toFixed(4)),
-    safeToWipe: true,
+    safeToWipe: scanReadable && counts.total === 0,
     driveLabel: targetPath,
     scannedAt: new Date().toISOString()
   }
