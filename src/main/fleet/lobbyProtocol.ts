@@ -146,6 +146,7 @@ export interface ConnectedNode {
     | "SANITIZING"
     | "RECOVERING"
     | "VERIFIED"
+    | "FAILED"
     | "IDLE";
   progress: number;
   speed: string;

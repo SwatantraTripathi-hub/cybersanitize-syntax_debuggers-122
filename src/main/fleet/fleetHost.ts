@@ -282,7 +282,9 @@ class FleetHost extends EventEmitter {
             const result = packet.payload as JobCompletePayload;
             const node = this.nodes.get(registeredNodeId);
             if (node) {
-              node.status = result.operation === "WIPE" ? "VERIFIED" : "IDLE";
+              node.status = result.success
+                ? (result.operation === "WIPE" ? "VERIFIED" : "IDLE")
+                : "FAILED";
               node.progress = 100;
               node.speed = "0 MB/s";
               node.eta = "Completed";
@@ -335,16 +337,18 @@ class FleetHost extends EventEmitter {
   broadcastPreScan(
     nodeIds?: string[],
     targetPathByNode?: Record<string, string>,
-  ): void {
+  ): number {
     const targets = nodeIds || Array.from(this.sockets.keys());
+    let dispatched = 0;
     for (const nodeId of targets) {
-      this._broadcastToNodes([nodeId], FleetMessageType.PRE_SCAN_REQ, {
+      dispatched += this._broadcastToNodes([nodeId], FleetMessageType.PRE_SCAN_REQ, {
         targetPath: targetPathByNode?.[nodeId],
       });
     }
     console.log(
       `[FleetHost] Pre-scan request broadcast to ${nodeIds?.length ?? this.nodes.size} nodes`,
     );
+    return dispatched;
   }
 
   /**
@@ -354,18 +358,20 @@ class FleetHost extends EventEmitter {
     standard: string,
     nodeIds?: string[],
     targetPathByNode?: Record<string, string>,
-  ): void {
+  ): number {
     const targets = nodeIds || Array.from(this.sockets.keys());
+    let dispatched = 0;
     for (const nodeId of targets) {
       const payload: ExecuteWipePayload = {
         standard,
         targetPath: targetPathByNode?.[nodeId],
       };
-      this._broadcastToNodes([nodeId], FleetMessageType.EXEC_WIPE, payload);
+      dispatched += this._broadcastToNodes([nodeId], FleetMessageType.EXEC_WIPE, payload);
     }
     console.log(
       `[FleetHost] Wipe (${standard}) broadcast to ${nodeIds?.length ?? this.nodes.size} nodes`,
     );
+    return dispatched;
   }
 
   /**
@@ -375,15 +381,17 @@ class FleetHost extends EventEmitter {
     fileTypes: string[],
     nodeIds?: string[],
     sourcePathByNode?: Record<string, string>,
-  ): void {
+  ): number {
     const targets = nodeIds || Array.from(this.sockets.keys());
+    let dispatched = 0;
     for (const nodeId of targets) {
       const payload: ExecuteRecoveryPayload = {
         fileTypes,
         sourcePath: sourcePathByNode?.[nodeId],
       };
-      this._broadcastToNodes([nodeId], FleetMessageType.EXEC_RECOVERY, payload);
+      dispatched += this._broadcastToNodes([nodeId], FleetMessageType.EXEC_RECOVERY, payload);
     }
+    return dispatched;
   }
 
   /**
@@ -393,11 +401,12 @@ class FleetHost extends EventEmitter {
     nodeIds: string[] | undefined,
     type: FleetMessageType,
     payload: unknown,
-  ): void {
+  ): number {
     const targets = nodeIds
       ? [...this.sockets.entries()].filter(([id]) => nodeIds.includes(id))
       : [...this.sockets.entries()];
 
+    let dispatched = 0;
     for (const [nodeId, ws] of targets) {
       if (ws.readyState === WebSocket.OPEN) {
         this._send(ws, {
@@ -407,10 +416,12 @@ class FleetHost extends EventEmitter {
           timestamp: new Date().toISOString(),
           payload,
         });
+        dispatched += 1;
       } else {
         console.warn(`[FleetHost] Skipping closed socket for node ${nodeId}`);
       }
     }
+    return dispatched;
   }
 
   /**

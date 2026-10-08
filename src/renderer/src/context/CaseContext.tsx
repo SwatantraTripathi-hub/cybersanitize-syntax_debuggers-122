@@ -46,7 +46,7 @@ export interface FleetNode {
   mac: string;
   model: string;
   storage: string;
-  status: 'ONLINE' | 'PRE-SCANNING' | 'SANITIZING' | 'RECOVERING' | 'VERIFIED' | 'IDLE';
+  status: 'ONLINE' | 'PRE-SCANNING' | 'SANITIZING' | 'RECOVERING' | 'VERIFIED' | 'FAILED' | 'IDLE';
   progress: number;
   speed: string;
   eta: string;
@@ -457,7 +457,7 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
               const isWipe = data.result.operation === 'WIPE';
               return {
                 ...n,
-                status: isWipe ? 'VERIFIED' : 'IDLE',
+                status: data.result.success ? (isWipe ? 'VERIFIED' : 'IDLE') : 'FAILED',
                 progress: 100,
                 speed: '0 MB/s',
                 eta: 'Completed',
@@ -468,7 +468,7 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }));
           setSelectedFleetNode(prev => prev && prev.id === data.nodeId ? {
             ...prev,
-            status: data.result.operation === 'WIPE' ? 'VERIFIED' : 'IDLE',
+            status: data.result.success ? (data.result.operation === 'WIPE' ? 'VERIFIED' : 'IDLE') : 'FAILED',
             progress: 100,
             speed: '0 MB/s',
             eta: 'Completed',
@@ -776,10 +776,17 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Dispatch real IPC broadcast to connected fleet nodes
     if (window.api?.broadcastPreScan) {
       const selectedIds = connectedNodes.filter(n => n.selected).map(n => n.id);
-      const targetPathByNode = selectedFleetNode && selectedDrive?.path
-        ? { [selectedFleetNode.id]: selectedDrive.path }
-        : undefined;
-      window.api.broadcastPreScan(selectedIds.length > 0 ? selectedIds : undefined, targetPathByNode).catch(console.warn);
+      const targetPathByNode = Object.fromEntries(connectedNodes
+        .filter(node => node.selected)
+        .map(node => [node.id, node.drives?.find(drive => drive.isRemovable && !drive.isBoot)?.path])
+        .filter((entry): entry is [string, string] => Boolean(entry[1])));
+      if (selectedFleetNode && selectedDrive?.path) targetPathByNode[selectedFleetNode.id] = selectedDrive.path;
+      window.api.broadcastPreScan(selectedIds.length > 0 ? selectedIds : undefined, Object.keys(targetPathByNode).length ? targetPathByNode : undefined)
+        .then((result: any) => { if (!result?.success) throw new Error(result?.error || 'No fleet node accepted the pre-scan request.') })
+        .catch((error: any) => {
+          console.error('[Fleet] Pre-scan dispatch failed:', error);
+          setConnectedNodes(prev => prev.map(node => selectedIds.includes(node.id) ? { ...node, status: 'FAILED', lastLog: `Pre-scan dispatch failed: ${error.message || error}` } : node));
+        });
     }
 
     setConnectedNodes(prev => prev.map(node => {
@@ -800,10 +807,17 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Dispatch real IPC broadcast to connected fleet nodes
     if (window.api?.broadcastWipe) {
       const selectedIds = connectedNodes.filter(n => n.selected).map(n => n.id);
-      const targetPathByNode = selectedFleetNode && selectedDrive?.path
-        ? { [selectedFleetNode.id]: selectedDrive.path }
-        : undefined;
-      window.api.broadcastWipe(standard, selectedIds.length > 0 ? selectedIds : undefined, targetPathByNode).catch(console.warn);
+      const targetPathByNode = Object.fromEntries(connectedNodes
+        .filter(node => node.selected)
+        .map(node => [node.id, node.drives?.find(drive => drive.isRemovable && !drive.isBoot)?.path])
+        .filter((entry): entry is [string, string] => Boolean(entry[1])));
+      if (selectedFleetNode && selectedDrive?.path) targetPathByNode[selectedFleetNode.id] = selectedDrive.path;
+      window.api.broadcastWipe(standard, selectedIds.length > 0 ? selectedIds : undefined, Object.keys(targetPathByNode).length ? targetPathByNode : undefined)
+        .then((result: any) => { if (!result?.success) throw new Error(result?.error || 'No fleet node accepted the wipe request.') })
+        .catch((error: any) => {
+          console.error('[Fleet] Wipe dispatch failed:', error);
+          setConnectedNodes(prev => prev.map(node => selectedIds.includes(node.id) ? { ...node, status: 'FAILED', lastLog: `Wipe dispatch failed: ${error.message || error}` } : node));
+        });
     }
 
     setConnectedNodes(prev => prev.map(node => {
@@ -824,10 +838,17 @@ export const CaseProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Dispatch real IPC broadcast to connected fleet nodes
     if (window.api?.broadcastRecovery) {
       const selectedIds = connectedNodes.filter(n => n.selected).map(n => n.id);
-      const sourcePathByNode = selectedFleetNode && (sourcePath || selectedDrive?.path)
-        ? { [selectedFleetNode.id]: sourcePath || selectedDrive.path }
-        : undefined;
-      window.api.broadcastRecovery(types, selectedIds.length > 0 ? selectedIds : undefined, sourcePathByNode).catch(console.warn);
+      const sourcePathByNode = Object.fromEntries(connectedNodes
+        .filter(node => node.selected)
+        .map(node => [node.id, node.drives?.find(drive => drive.isRemovable && !drive.isBoot)?.path])
+        .filter((entry): entry is [string, string] => Boolean(entry[1])));
+      if (selectedFleetNode && (sourcePath || selectedDrive?.path)) sourcePathByNode[selectedFleetNode.id] = sourcePath || selectedDrive.path;
+      window.api.broadcastRecovery(types, selectedIds.length > 0 ? selectedIds : undefined, Object.keys(sourcePathByNode).length ? sourcePathByNode : undefined)
+        .then((result: any) => { if (!result?.success) throw new Error(result?.error || 'No fleet node accepted the recovery request.') })
+        .catch((error: any) => {
+          console.error('[Fleet] Recovery dispatch failed:', error);
+          setConnectedNodes(prev => prev.map(node => selectedIds.includes(node.id) ? { ...node, status: 'FAILED', lastLog: `Recovery dispatch failed: ${error.message || error}` } : node));
+        });
     }
 
     setConnectedNodes(prev => prev.map(node => {
